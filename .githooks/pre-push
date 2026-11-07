@@ -1,0 +1,23 @@
+#!/usr/bin/env sh
+# wardn pre-push hook: runs every CI gate (`make check`) before a push.
+# Install once per clone with `make hooks`.
+#
+# This is a local safeguard, not a replacement for server-side CI: it can be
+# skipped with `git push --no-verify`. Don't skip it.
+set -eu
+
+# The checks run against the working tree, so it must match what is being
+# pushed. Otherwise uncommitted edits could make a failing commit look clean.
+if [ -n "$(git status --porcelain)" ]; then
+	echo "wardn pre-push: you have uncommitted changes, so the checks would not test what you are pushing." >&2
+	echo "Commit or stash them, then push again." >&2
+	exit 1
+fi
+
+echo "wardn pre-push: running make check..."
+if ! make check; then
+	echo "" >&2
+	echo "wardn pre-push: checks failed; push aborted. Fix the failures above and push again." >&2
+	exit 1
+fi
+echo "wardn pre-push: all checks passed."
