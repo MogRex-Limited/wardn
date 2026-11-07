@@ -117,7 +117,7 @@ Threats with a `TestThreat_` test, by milestone:
 | **Tested (M2)** | T01, T07, T08, T09, T10, T11, T12, T13, T14, T16, T18, T23, T25 |
 | **Tested at the store level (M3)** | T01 (`FiltersByUser`, `FiltersByScope`), T13 (`ExactIdentity`: case, Unicode normalisation, width and trailing space on every database), T08 (`TestFailClosedWhenDatabaseDown`), T25 (`Concurrency`), SQL injection through IDs (`HostileAndLongIDs`). These run in the `storetest` conformance suite against SQLite, PostgreSQL, MySQL and MariaDB on every change. |
 | **Tested (M4)** | T08 over HTTP (store error → 500, handler not run), T16 at route registration, T17 (`AuditRoutes`, proven against a deliberately unprotected chi route), T18 over HTTP, T20 (error bodies and headers reveal nothing) |
-| Planned for M5 (custom roles, audit) | T03, T04, T05, T06, T15, T21, T22 |
+| **Tested (M5)** | T03, T04, T05, T06 (guard tests, plus a property test that attacks the guard in 300 random worlds against the reference implementation), T15 (role-name spoofing), T21 (audit veto and failure reporting), T22 (concurrent edits, in the core and atomically in every store) |
 | Planned for M6 (cache) | T24 |
 | Planned for M8 (docs, reference apps) | T02 |
 | Partly mitigated, test planned | T19: the clock is injectable and expiry is tested at exact boundaries; skew behaviour is documented in M8 |

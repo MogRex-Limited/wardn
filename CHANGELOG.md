@@ -71,6 +71,31 @@ All notable changes to wardn are documented here. The format follows
   - Release workflow: signed-tag check, reproducible cross-platform CLI builds,
     checksums and Sigstore build provenance.
 
+- Custom roles and the escalation guard (M5):
+  - `CreateRole`, `UpdateRole` (optimistic concurrency), `DeleteRole` (with
+    `Cascade()`), and guarded `Assign` and `Revoke`, acting as the user in the
+    context. Custom roles are grants-only, belong to a scope, and apply only
+    within its subtree. Names resist spoofing (one script, no invisible
+    characters or combining marks, unique ignoring case and spacing).
+  - The escalation guard: nobody can create, edit, assign or revoke a role
+    containing a permission they don't hold. Holding a wildcard means holding
+    all of it, with no deny inside. `ErrEscalation`, `ErrRoleInUse`,
+    `ErrRoleNameTaken`, `ErrRoleNotFound`, `ErrConflict`.
+  - `System()` gains the same management methods, unguarded.
+  - Admin-screen APIs: `Roles`, `AssignableRoles`, `Members` (paginated) and
+    `CustomRole`.
+  - Audit: `Config.OnChange` is called before every change (and can veto it),
+    and again if the change fails. `Link` is audited too.
+  - Expiry sweeper: `SweepExpired` (with `RemoveExpired()`) and `RunExpiry`
+    report expired assignments exactly once.
+  - `Store` now includes `RoleStore` and the new `AssignmentStore` methods.
+    SQL schema v2 adds role tables (with an `effect` column for future
+    denies), expiry reporting and indexes. Steps that can't use
+    `IF NOT EXISTS` check before running, so interrupted migrations re-run
+    safely. `wardnsql.LatestSchemaVersion`, `Store.TablePrefix`.
+  - The conformance suite grows to 25 checks, including atomic name
+    uniqueness and atomic versioned updates under concurrent writers.
+
 ### Removed
 
 - CodeQL workflow, until the repository is public or GitHub Advanced

@@ -36,6 +36,10 @@ roles:
   teller:
     assignable_at: [branch]
     allow: [customer:view, loan:create, loan:view]
+  branch_manager:
+    description: Runs one branch, including its roles
+    assignable_at: [branch]
+    allow: [customer:view, customer:edit, "loan:*", wardn:roles.assign, wardn:roles.manage]
   loan_officer: ["loan:*"]
   auditor: [customer:view, loan:view, report:export]
   suspended:

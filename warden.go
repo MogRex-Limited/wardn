@@ -54,6 +54,12 @@ type Config struct {
 	// permission was missing.
 	OnError func(w http.ResponseWriter, r *http.Request, err error)
 
+	// OnChange, if set, is called before every change to assignments,
+	// custom roles and scope links, with the acting user, for the audit
+	// trail. If it returns an error, the change is not made (fail closed).
+	// If the change then fails, it is called again with Event.Err set.
+	OnChange func(ctx context.Context, e Event) error
+
 	// OnDecision, if set, is called with every authorization decision and
 	// any error, for audit logging and debugging. It must be fast and must
 	// not panic.
@@ -78,6 +84,7 @@ type Warden struct {
 	clock        Clock
 	onDecision   func(context.Context, Decision, error)
 	userFrom     func(*http.Request) (string, bool)
+	onChange     func(context.Context, Event) error
 	errorHandler func(http.ResponseWriter, *http.Request, error)
 }
 
@@ -111,6 +118,7 @@ func New(cfg Config) (*Warden, error) {
 		clock:        cfg.Clock,
 		onDecision:   cfg.OnDecision,
 		userFrom:     cfg.UserFrom,
+		onChange:     cfg.OnChange,
 		errorHandler: cfg.OnError,
 	}
 	if w.store == nil {

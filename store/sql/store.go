@@ -46,7 +46,8 @@ type Store struct {
 }
 
 type tables struct {
-	assignments, links, migrations string
+	assignments, links, migrations   string
+	roles, roleRules, roleAssignable string
 }
 
 type queries struct {
@@ -100,14 +101,17 @@ func New(db *sql.DB, opts ...Option) (*Store, error) {
 	}
 	s := &Store{db: db, d: d, prefix: o.prefix}
 	s.t = tables{
-		assignments: o.prefix + "assignments",
-		links:       o.prefix + "scope_links",
-		migrations:  o.prefix + "schema_migrations",
+		assignments:    o.prefix + "assignments",
+		links:          o.prefix + "scope_links",
+		migrations:     o.prefix + "schema_migrations",
+		roles:          o.prefix + "roles",
+		roleRules:      o.prefix + "role_rules",
+		roleAssignable: o.prefix + "role_assignable",
 	}
 	s.q = queries{
 		assign: d.bind("INSERT INTO " + s.t.assignments +
-			" (user_id, role, scope_type, scope_id, starts_at, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) " +
-			d.upsert([]string{"user_id", "scope_type", "scope_id", "role"}, []string{"starts_at", "expires_at", "updated_at"})),
+			" (user_id, role, scope_type, scope_id, starts_at, expires_at, created_at, updated_at, expiry_reported_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL) " +
+			d.upsert([]string{"user_id", "scope_type", "scope_id", "role"}, []string{"starts_at", "expires_at", "updated_at", "expiry_reported_at"})),
 		revoke: d.bind("DELETE FROM " + s.t.assignments +
 			" WHERE user_id = ? AND role = ? AND scope_type = ? AND scope_id = ?"),
 		selectAssignments: "SELECT role, scope_type, scope_id, starts_at, expires_at FROM " + s.t.assignments + " WHERE user_id = ? AND (",
@@ -127,6 +131,9 @@ func MustNew(db *sql.DB, opts ...Option) *Store {
 	}
 	return s
 }
+
+// TablePrefix returns the prefix of the store's table names.
+func (s *Store) TablePrefix() string { return s.prefix }
 
 // Dialect returns the SQL dialect the store uses.
 func (s *Store) Dialect() Dialect { return s.d.kind }

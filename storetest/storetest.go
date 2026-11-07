@@ -43,6 +43,16 @@ func Run(t *testing.T, newStore func(t *testing.T) wardn.Store) {
 		{"ReturnedDataIsACopy", testReturnedCopy},
 		{"CanceledContext", testCanceledContext},
 		{"Concurrency", testConcurrency},
+		{"Members", testMembers},
+		{"Expiry", testExpiry},
+		{"RoleRoundTrip", testRoleRoundTrip},
+		{"RoleNameUnique", testRoleNameUnique},
+		{"RoleNameUniqueConcurrent", testRoleNameUniqueConcurrent},
+		{"RoleUpdate", testRoleUpdate},
+		{"RoleUpdateConcurrent", testRoleUpdateConcurrent},
+		{"RoleDeleteAndOwners", testRoleDeleteAndOwners},
+		{"RoleInUseAndRevokeRole", testRoleInUseAndRevokeRole},
+		{"RoleCanceledContext", testRoleCanceledContext},
 		{"WithWarden", testWithWarden},
 	}
 	for _, tt := range tests {
@@ -198,8 +208,8 @@ func testExactIdentity(t *testing.T, s wardn.Store) {
 	ctx := context.Background()
 	groups := [][]string{
 		{"o1", "O1"},
-		{"café", "café", "CAFÉ", "cafe"}, // NFC, NFD, upper, unaccented
-		{"o1", "ｏ1"},                      // fullwidth
+		{"café", "cafe\u0301", "CAFÉ", "cafe"}, // NFC, NFD, upper, unaccented
+		{"o1", "ｏ1"},                           // fullwidth
 		{"strasse", "straße"},
 		{"user", "user "}, // stores must not trim (wardn validates, stores must not alter)
 	}
@@ -234,7 +244,7 @@ func testHostileIDs(t *testing.T, s wardn.Store) {
 		`back\slash`,
 		`50%_off`,
 		"a:b/c|d",
-		"Ọ̀yọ́ branch",
+		"Ọ̀yọ\u0301 branch",
 		"emoji 🔐",
 		strings.Repeat("x", 256),
 		strings.Repeat("é", 128), // 256 bytes, 128 characters

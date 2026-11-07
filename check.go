@@ -137,16 +137,38 @@ func (w *Warden) grants(ctx context.Context, user string, scope Scope) ([]grant,
 		depthOf[s] = i
 	}
 	now := w.clock.Now()
-	gs := make([]grant, 0, len(assignments))
+	active := make([]Assignment, 0, len(assignments))
+	var customIDs []string
 	for _, a := range assignments {
-		depth, inChain := depthOf[a.Scope]
+		_, inChain := depthOf[a.Scope]
 		switch {
 		case a.User != user, !inChain:
 			continue // never trust a store to filter correctly (T01)
 		case !a.activeAt(now):
 			continue // rule 7: outside its time window (T09)
 		}
+		active = append(active, a)
+		if isCustomRoleID(a.Role) {
+			customIDs = append(customIDs, a.Role)
+		}
+	}
+	customs, err := w.customRoles(ctx, customIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	gs := make([]grant, 0, len(active))
+	for _, a := range active {
+		depth := depthOf[a.Scope]
 		role := w.policy.roles[a.Role]
+		if cr := customs[a.Role]; cr != nil && isCustomRoleID(a.Role) {
+			role = w.policy.compileCustomRole(cr)
+			// A custom role applies only within its owner's subtree: the
+			// owner must be the assignment's scope or one of its ancestors.
+			if ownerDepth, ok := depthOf[cr.Owner]; !ok || ownerDepth < depth {
+				continue
+			}
+		}
 		if role == nil {
 			continue // rule 6: the role no longer exists (T10)
 		}
@@ -167,7 +189,7 @@ func evaluate(gs []grant, d Decision) Decision {
 	for _, g := range gs {
 		if rule, ok := firstMatch(g.role.deny, d.Permission); ok {
 			d.Role, d.At, d.Rule = g.role.name, g.at, rule
-			d.Reason = fmt.Sprintf("denied by role %q at %s (rule %q)", g.role.name, g.at, rule)
+			d.Reason = fmt.Sprintf("denied by role %s at %s (rule %q)", g.role.label(), g.at, rule)
 			return d
 		}
 	}
@@ -175,7 +197,7 @@ func evaluate(gs []grant, d Decision) Decision {
 		if rule, ok := firstMatch(g.role.allow, d.Permission); ok {
 			d.Allowed = true
 			d.Role, d.At, d.Rule = g.role.name, g.at, rule
-			d.Reason = fmt.Sprintf("granted by role %q at %s (rule %q)", g.role.name, g.at, rule)
+			d.Reason = fmt.Sprintf("granted by role %s at %s (rule %q)", g.role.label(), g.at, rule)
 			return d
 		}
 	}
@@ -290,6 +312,53 @@ func (w *Warden) assignments(ctx context.Context, user string, scope Scope, chai
 		m.mu.Unlock()
 	}
 	return as, nil
+}
+
+// customRoles loads custom roles by ID, using the request memo. Missing
+// roles map to nil.
+func (w *Warden) customRoles(ctx context.Context, ids []string) (map[string]*CustomRole, error) {
+	out := make(map[string]*CustomRole, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	m := w.memoFrom(ctx)
+	var missing []string
+	if m != nil {
+		m.mu.Lock()
+		for _, id := range ids {
+			if r, hit := m.customRoles[id]; hit {
+				out[id] = r
+			} else {
+				missing = append(missing, id)
+			}
+		}
+		m.mu.Unlock()
+	} else {
+		missing = ids
+	}
+	if len(missing) == 0 {
+		return out, nil
+	}
+	slices.Sort(missing)
+	missing = slices.Compact(missing)
+	found, err := w.store.Roles(ctx, missing)
+	if err != nil {
+		return nil, fmt.Errorf("wardn: loading custom roles: %w", err)
+	}
+	for i := range found {
+		r := found[i]
+		if slices.Contains(missing, r.ID) { // never trust a store to filter correctly
+			out[r.ID] = &r
+		}
+	}
+	if m != nil {
+		m.mu.Lock()
+		for _, id := range missing {
+			m.customRoles[id] = out[id]
+		}
+		m.mu.Unlock()
+	}
+	return out, nil
 }
 
 // RolesOf returns the user's assignments that apply at scope right now,

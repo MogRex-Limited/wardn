@@ -46,7 +46,7 @@ func HTTPStatus(err error) int {
 		return http.StatusOK
 	case errors.Is(err, ErrUnauthenticated):
 		return http.StatusUnauthorized
-	case errors.Is(err, ErrDenied):
+	case errors.Is(err, ErrDenied), errors.Is(err, ErrEscalation):
 		return http.StatusForbidden
 	case errors.Is(err, ErrInvalidInput):
 		return http.StatusBadRequest

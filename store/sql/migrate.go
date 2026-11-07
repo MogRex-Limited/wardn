@@ -17,11 +17,30 @@ import (
 // running an older release against it.
 var ErrSchemaTooNew = errors.New("wardnsql: database schema is newer than this release of wardn supports")
 
+// step is one schema change. If done is set and reports true, the change is
+// already in place and is skipped: every step must be safe to run twice,
+// because MySQL cannot run DDL inside a transaction, so a migration
+// interrupted halfway is simply run again.
+type step struct {
+	sql  string
+	done func(ctx context.Context, q querier) (bool, error)
+}
+
+type querier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// LatestSchemaVersion is the schema version this release migrates to.
+const LatestSchemaVersion = 2
+
 // migrations returns the schema changes, in order. Migration N brings the
-// schema to version N. Released migrations are never edited, only appended
-// to, and every statement must be safe to run twice (IF NOT EXISTS), because
-// MySQL cannot run DDL inside a transaction.
-func (s *Store) migrations() [][]string {
+// schema to version N. Released migrations are never edited, only appended.
+func (s *Store) migrations() [][]step {
+	return [][]step{s.migrationV1(), s.migrationV2()}
+}
+
+// migrationV1: assignments and scope links (M3).
+func (s *Store) migrationV1() []step {
 	d, t := s.d, s.t
 	assignmentIndex := "INDEX " + t.assignments + "_scope (scope_type, scope_id)"
 	assignments := `CREATE TABLE IF NOT EXISTS ` + t.assignments + ` (
@@ -48,11 +67,95 @@ func (s *Store) migrations() [][]string {
 		PRIMARY KEY (child_type, child_id)
 	)` + d.tableSuffix
 
-	v1 := []string{assignments, links}
+	v1 := []step{{sql: assignments}, {sql: links}}
 	if !d.inlineIndexes {
-		v1 = append(v1, "CREATE INDEX IF NOT EXISTS "+t.assignments+"_scope ON "+t.assignments+" (scope_type, scope_id)")
+		v1 = append(v1, step{sql: "CREATE INDEX IF NOT EXISTS " + t.assignments + "_scope ON " + t.assignments + " (scope_type, scope_id)"})
 	}
-	return [][]string{v1}
+	return v1
+}
+
+// migrationV2: custom roles, and expiry reporting on assignments (M5).
+func (s *Store) migrationV2() []step {
+	d, t := s.d, s.t
+	roles := `CREATE TABLE IF NOT EXISTS ` + t.roles + ` (
+		id          ` + d.id + ` NOT NULL PRIMARY KEY,
+		owner_type  ` + d.name + ` NOT NULL,
+		owner_id    ` + d.id + ` NOT NULL,
+		name        ` + d.id + ` NOT NULL,
+		name_key    ` + d.id + ` NOT NULL,
+		description ` + d.text + ` NOT NULL,
+		version     ` + d.integer + ` NOT NULL,
+		created_at  ` + d.integer + ` NOT NULL,
+		updated_at  ` + d.integer + ` NOT NULL,
+		UNIQUE (owner_type, owner_id, name_key)
+	)` + d.tableSuffix
+	// effect is "allow" or "deny". Custom roles only grant in this release
+	// (design decision D2), but the column exists so enabling denies later
+	// needs no schema change.
+	rules := `CREATE TABLE IF NOT EXISTS ` + t.roleRules + ` (
+		role_id    ` + d.id + ` NOT NULL,
+		position   ` + d.integer + ` NOT NULL,
+		effect     ` + d.name + ` NOT NULL,
+		permission ` + d.perm + ` NOT NULL,
+		PRIMARY KEY (role_id, position)
+	)` + d.tableSuffix
+	assignable := `CREATE TABLE IF NOT EXISTS ` + t.roleAssignable + ` (
+		role_id    ` + d.id + ` NOT NULL,
+		position   ` + d.integer + ` NOT NULL,
+		scope_type ` + d.name + ` NOT NULL,
+		PRIMARY KEY (role_id, position)
+	)` + d.tableSuffix
+	return []step{
+		{sql: roles},
+		{sql: rules},
+		{sql: assignable},
+		{
+			sql:  "ALTER TABLE " + t.assignments + " ADD COLUMN expiry_reported_at " + d.integer + " NULL",
+			done: s.columnExists(t.assignments, "expiry_reported_at"),
+		},
+		s.index(t.assignments+"_expiry", t.assignments, "expires_at"),
+		s.index(t.assignments+"_role", t.assignments, "role"),
+	}
+}
+
+// index returns a step creating an index if it does not exist.
+func (s *Store) index(name, table, columns string) step {
+	if s.d.kind == MySQL { // no CREATE INDEX IF NOT EXISTS
+		return step{
+			sql:  "CREATE INDEX " + name + " ON " + table + " (" + columns + ")",
+			done: s.indexExists(table, name),
+		}
+	}
+	return step{sql: "CREATE INDEX IF NOT EXISTS " + name + " ON " + table + " (" + columns + ")"}
+}
+
+func (s *Store) columnExists(table, column string) func(context.Context, querier) (bool, error) {
+	return func(ctx context.Context, q querier) (bool, error) {
+		var query string
+		switch s.d.kind {
+		case Postgres:
+			query = "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1 AND column_name = $2"
+		case MySQL:
+			query = "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?"
+		case SQLite:
+			query = "SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?"
+		case DetectDialect:
+			return false, fmt.Errorf("wardnsql: unsupported dialect %v", s.d.kind)
+		}
+		var n int
+		err := q.QueryRowContext(ctx, query, table, column).Scan(&n)
+		return n > 0, err
+	}
+}
+
+func (s *Store) indexExists(table, index string) func(context.Context, querier) (bool, error) {
+	return func(ctx context.Context, q querier) (bool, error) {
+		var n int
+		err := q.QueryRowContext(ctx,
+			"SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?",
+			table, index).Scan(&n)
+		return n > 0, err
+	}
 }
 
 // sqliteMigrations serialises migrations within a process: SQLite has no
@@ -98,14 +201,23 @@ func (s *Store) Migrate(ctx context.Context) error {
 	return nil
 }
 
-func (s *Store) apply(ctx context.Context, conn *sql.Conn, version int, stmts []string) error {
+func (s *Store) apply(ctx context.Context, conn *sql.Conn, version int, steps []step) error {
 	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("wardnsql: migration %d: %w", version, err)
 	}
 	defer tx.Rollback() //nolint:errcheck // no-op after Commit
-	for _, stmt := range stmts {
-		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+	for _, st := range steps {
+		if st.done != nil {
+			done, err := st.done(ctx, tx)
+			if err != nil {
+				return fmt.Errorf("wardnsql: migration %d: %w", version, err)
+			}
+			if done {
+				continue
+			}
+		}
+		if _, err := tx.ExecContext(ctx, st.sql); err != nil {
 			return fmt.Errorf("wardnsql: migration %d: %w", version, err)
 		}
 	}

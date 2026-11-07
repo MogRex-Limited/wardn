@@ -86,7 +86,7 @@ func TestMatches(t *testing.T) {
 }
 
 func TestValidateID(t *testing.T) {
-	valid := []string{"o1", "O1", "user@example.com", "a:b", "550e8400-e29b-41d4-a716-446655440000", "Ọ̀yọ́ branch", strings.Repeat("x", maxIDLen)}
+	valid := []string{"o1", "O1", "user@example.com", "a:b", "550e8400-e29b-41d4-a716-446655440000", "Ọ̀yọ\u0301 branch", strings.Repeat("x", maxIDLen)}
 	invalid := []string{
 		"",
 		strings.Repeat("x", maxIDLen+1),
