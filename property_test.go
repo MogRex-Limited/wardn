@@ -62,7 +62,7 @@ func randomWorld(r *rand.Rand) *world {
 			patterns = append(patterns, res+":*")
 		}
 	}
-	patterns = append(patterns, "*", PermRolesManage)
+	patterns = append(patterns, "*", PermRolesManage, PermRolesAssign)
 
 	scopeTypes := []string{globalName, "organisation", "region", "branch", "team"}
 	for i := range 1 + r.IntN(5) {

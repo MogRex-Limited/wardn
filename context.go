@@ -45,6 +45,7 @@ type memo struct {
 	mu          sync.Mutex
 	parents     map[Scope]parentResult
 	assignments map[assignmentsKey][]Assignment
+	customRoles map[string]*CustomRole // nil value: the role does not exist
 }
 
 type parentResult struct {
@@ -68,6 +69,7 @@ func (w *Warden) WithMemo(ctx context.Context) context.Context {
 	return context.WithValue(ctx, memoKey{w}, &memo{
 		parents:     map[Scope]parentResult{},
 		assignments: map[assignmentsKey][]Assignment{},
+		customRoles: map[string]*CustomRole{},
 	})
 }
 
@@ -86,4 +88,5 @@ func (m *memo) forget() {
 	defer m.mu.Unlock()
 	clear(m.parents)
 	clear(m.assignments)
+	clear(m.customRoles)
 }

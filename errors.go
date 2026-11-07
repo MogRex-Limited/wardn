@@ -21,6 +21,15 @@ var (
 	// scope hierarchy, or a stored link that does.
 	ErrInvalidLink = errors.New("wardn: invalid scope link")
 
+	// ErrEscalation reports an attempt to create, edit, assign or revoke a
+	// role containing permissions the acting user does not hold (the
+	// escalation guard, design §6.2).
+	ErrEscalation = errors.New("wardn: you cannot grant permissions you do not hold")
+
+	// ErrRoleInUse reports an attempt to delete a custom role that is still
+	// assigned, without wardn.Cascade.
+	ErrRoleInUse = errors.New("wardn: role is still assigned")
+
 	// ErrLinksExternal reports a call to Link when scope parents are
 	// resolved by Config.ParentOf instead of stored by wardn.
 	ErrLinksExternal = errors.New("wardn: scope parents are resolved by Config.ParentOf; Link is disabled")

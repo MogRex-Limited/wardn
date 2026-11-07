@@ -163,13 +163,28 @@ func TestMigrations(t *testing.T) {
 			for err := range errs {
 				t.Fatalf("concurrent Migrate: %v", err)
 			}
-			if v, err := s.SchemaVersion(ctx); err != nil || v != 1 {
-				t.Fatalf("after migrating: version %d, %v; want 1", v, err)
+			if v, err := s.SchemaVersion(ctx); err != nil || v != wardnsql.LatestSchemaVersion {
+				t.Fatalf("after migrating: version %d, %v; want %d", v, err, wardnsql.LatestSchemaVersion)
 			}
 
 			// Running again is a no-op.
 			if err := s.Migrate(ctx); err != nil {
 				t.Fatalf("re-running Migrate: %v", err)
+			}
+
+			// An interrupted migration (schema changed, version not yet
+			// recorded, as can happen on MySQL, which cannot run DDL in a
+			// transaction) must be safe to run again.
+			for v := wardnsql.LatestSchemaVersion; v > 1; v-- {
+				if _, err := db.ExecContext(ctx, "DELETE FROM "+s.TablePrefix()+"schema_migrations WHERE version = "+strconv.Itoa(v)); err != nil { //nolint:gosec // G202: test-generated prefix and integer
+					t.Fatal(err)
+				}
+			}
+			if err := s.Migrate(ctx); err != nil {
+				t.Fatalf("re-running interrupted migrations: %v", err)
+			}
+			if v, _ := s.SchemaVersion(ctx); v != wardnsql.LatestSchemaVersion {
+				t.Fatalf("after re-running: version %d", v)
 			}
 		})
 	}
@@ -214,7 +229,7 @@ func TestNewMigratesAutomatically(t *testing.T) {
 			if _, err := wardn.New(wardn.Config{Policy: policy(t), Store: auto}); err != nil {
 				t.Fatal(err)
 			}
-			if v, _ := auto.SchemaVersion(ctx); v != 1 {
+			if v, _ := auto.SchemaVersion(ctx); v != wardnsql.LatestSchemaVersion {
 				t.Fatalf("wardn.New did not migrate: version %d", v)
 			}
 

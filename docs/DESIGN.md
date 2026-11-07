@@ -258,10 +258,12 @@ Rules:
 - A custom role may only use permissions from the catalog. Unknown permissions are rejected.
 - **Custom roles are grants-only in v1.** A `RoleSpec` with `Deny` entries is rejected. Only developer-defined system roles may contain denies. Admins rarely reason well about deny-wins interactions, and a mistaken deny locks people out in ways that are hard to diagnose. The data model already stores an effect (allow/deny) for every rule, so custom-role denies can later be enabled with a configuration flag without a schema change or breaking change.
 - `AssignableAt` defaults to the type of the owning scope, and may list only that type and the types beneath it. A role created in `organisation:o1` with `AssignableAt: [branch]` can be handed out only at branches inside `o1`.
-- Display names must be unique within the owning scope and cannot reuse a system role name.
+- **Names are checked against spoofing** (threat model T15): letters from one script only (no Cyrillic "а" in "Аdmin"), no control or invisible characters, no combining marks (two encodings of the same visible text), no leading, trailing or repeated spaces. Uniqueness ignores case, spaces, `_` and `-`. A name must be unique within its owner scope and the owner's ancestors (where both roles are visible together), and must not look like a system role name: "Org Admin" is refused when `org_admin` exists.
+- Roles are always identified by a generated ID (`cr-` plus 24 random characters) that can never clash with a system role name. Names are only for display.
 - Editing a custom role affects every holder immediately; there are no copies.
 - Deleting a role that is still assigned returns `ErrRoleInUse` unless the caller asks for cascade deletion. Because evaluation ignores dangling assignments (rule 6), cascade deletion is safe even on databases without multi-document transactions.
 - Edits use optimistic concurrency (a version number), so two admins editing the same role cannot silently overwrite each other.
+- If a permission is removed from the catalog, custom roles that list it simply stop granting it, the same way a deleted role stops granting (rule 6).
 
 ### 6.2 The escalation guard
 
@@ -278,10 +280,15 @@ Products grant these to whichever roles should have them, like any other permiss
 
 **Guard rules** — enforced on every management call, in the scope where it happens:
 
-1. **Create / edit a role:** the actor needs `wardn:roles.manage`, *and* must hold every permission they put into the role.
-2. **Assign a role:** the actor needs `wardn:roles.assign`, *and* must hold every permission the role grants.
-3. **Revoke a role:** same as assign. (This stops a branch manager from stripping an organisation admin.)
-4. **System roles cannot be edited or deleted** at runtime.
+1. **Create a role:** the actor needs `wardn:roles.manage` at the owner scope, *and* must hold every permission they put into the role.
+2. **Edit or delete a role:** the same, and the actor must also hold every permission the role *already* has, so nobody can strip a role they could not have granted.
+3. **Assign a role:** the actor needs `wardn:roles.assign`, *and* must hold every permission the role grants.
+4. **Revoke a role:** same as assign. (This stops a branch manager from stripping an organisation admin.) A leftover assignment of a role that no longer exists grants nothing, so revoking it needs only `wardn:roles.assign`.
+5. **System roles cannot be edited or deleted** at runtime.
+
+**Holding a wildcard** means holding *all* of it: an allow covering the whole wildcard, and no deny anywhere inside it. An actor who holds `loan:create`, `loan:view` and `loan:approve` one by one cannot create a `loan:*` role, because it would also grant every `loan:` permission added later (threat model T06). An actor with `*` minus a deny on `loan:approve` cannot grant `*` or `loan:*`.
+
+**Order of checks:** the management permission is checked first, before the target role is even looked up, so a user without it learns nothing (not even whether a role ID exists).
 
 A super-admin holding `*` passes these checks naturally. Nobody else can create or hand out more power than they have.
 
@@ -351,7 +358,8 @@ w.RolesOf(ctx, userID, scope)         // roles in effect here, including inherit
 w.Catalog()                           // every permission with its description, grouped by resource
 w.Roles(ctx, scope)                   // system roles + custom roles visible in this scope
 w.AssignableRoles(ctx, scope)         // only the roles the current actor may grant (escalation guard applied)
-w.Members(ctx, scope, page)           // who has which role here — paginated
+w.Members(ctx, scope, cursor, limit)  // who has which role here: paginated, byte-ordered by user then role
+w.CustomRole(ctx, id)                 // one custom role, with its Version, for an edit form
 ```
 
 ### 7.4 Managing access (guarded)
@@ -364,12 +372,12 @@ w.Revoke(ctx, userID, "teller", branch)
 
 w.CreateRole(ctx, scope, wardn.RoleSpec{...})
 w.UpdateRole(ctx, roleID, wardn.RoleSpec{...}, version)
-w.DeleteRole(ctx, roleID, wardn.Cascade)
+w.DeleteRole(ctx, roleID, wardn.Cascade())
 
 w.System().Assign(...)                // unguarded, for seeding and jobs (§6.3)
 ```
 
-The guarded `w.Assign` and `w.Revoke` arrive with the escalation guard in M5. Until then only `w.System()` exists, so no call ever *looks* guarded without being guarded.
+The acting user comes from the context (`wardn.WithUser`, which the product's authentication middleware sets). Without one, every guarded call fails with `ErrUnauthenticated`. Guard failures are `ErrDenied` (missing the management permission) or `ErrEscalation` (missing a permission being granted); `HTTPStatus` maps both to 403. `w.System()` offers the same methods without the guard.
 
 Assign and Revoke are idempotent. Assign also checks that the role may be used in that scope: the scope's type must be in the role's `assignable_at`, and a custom role may only be assigned within its owning scope's subtree.
 
@@ -378,7 +386,7 @@ Assign and Revoke are idempotent. Assign also checks that the role may be used i
 Expired assignments stop working on their own (rule 7). Separately, regulators expect a record of when access ended. An optional sweeper emits an `AssignmentExpired` event through `OnChange` for each assignment that has expired since its last run:
 
 ```go
-go w.RunExpiry(ctx, time.Minute)     // or call w.SweepExpired(ctx) from the product's own scheduler
+go w.RunExpiry(ctx, time.Minute, logError)  // or call w.SweepExpired(ctx) from the product's own scheduler
 ```
 
 The sweeper exists for auditing and housekeeping only. If it never runs, access is still correct. It can optionally delete expired rows once they have been reported.
@@ -520,16 +528,17 @@ type Store interface {
     AssignmentStore
     RoleStore
     ScopeStore
-    Migrate(ctx context.Context) error
 }
 
 type AssignmentStore interface {
-    Assign(ctx context.Context, a Assignment) error                         // idempotent upsert (replaces time window)
-    Revoke(ctx context.Context, user, role string, scope Scope) error       // idempotent
-    Assignments(ctx context.Context, user string, in []Scope) ([]Assignment, error)
-    Members(ctx context.Context, scope Scope, page Page) ([]Assignment, string, error)
-    ExpiredUnreported(ctx context.Context, before time.Time, limit int) ([]Assignment, error)
-    MarkExpiryReported(ctx context.Context, a []Assignment) error
+    Assign(ctx context.Context, a Assignment) error                   // upsert; replaces the window, clears any expiry report
+    Revoke(ctx context.Context, user, role string, scope Scope) error // idempotent
+    Assignments(ctx context.Context, user string, scopes []Scope) ([]Assignment, error)
+    Members(ctx context.Context, scope Scope, cursor string, limit int) ([]Assignment, string, error)
+    RoleInUse(ctx context.Context, role string) (bool, error)
+    RevokeRole(ctx context.Context, role string) error                // every assignment of a role
+    ExpiredUnreported(ctx context.Context, t time.Time, limit int) ([]Assignment, error)
+    MarkExpiryReported(ctx context.Context, as []Assignment) error    // never marks a newer window
 }
 
 type Assignment struct {
@@ -541,22 +550,27 @@ type Assignment struct {
 }
 
 type RoleStore interface {
-    CreateRole(ctx context.Context, r CustomRole) error
-    UpdateRole(ctx context.Context, r CustomRole, expectedVersion int) error   // ErrConflict on mismatch
-    DeleteRole(ctx context.Context, id string) error
+    CreateRole(ctx context.Context, r CustomRole) error                       // ErrRoleNameTaken, atomically
+    UpdateRole(ctx context.Context, r CustomRole, expectedVersion int) error  // ErrConflict / ErrRoleNotFound / ErrRoleNameTaken
+    DeleteRole(ctx context.Context, id string) error                          // idempotent
     Roles(ctx context.Context, ids []string) ([]CustomRole, error)
-    RolesOwnedBy(ctx context.Context, scopes []Scope) ([]CustomRole, error)
+    RolesOwnedBy(ctx context.Context, owners []Scope) ([]CustomRole, error)
 }
 
 type ScopeStore interface {
     Link(ctx context.Context, child, parent Scope) error
     Parent(ctx context.Context, child Scope) (Scope, bool, error)
 }
+
+// Optional: stores that manage a schema. wardn.New calls it.
+type Migrator interface {
+    Migrate(ctx context.Context) error
+}
 ```
 
 Design choices that keep adapters simple:
 
-- **No transactions required.** Every operation is a single-record write or a read. Dangling references are harmless (rule 6), so multi-step operations can safely be done in sequence.
+- **Few atomicity requirements, all explicit.** Role-name uniqueness and versioned role updates must be atomic, and the conformance suite tests both with concurrent writers. Everything else is a single write or a read. Dangling references are harmless (rule 6), so multi-step operations such as cascade deletion can safely be done in sequence.
 - **Idempotent writes.** Retrying is always safe.
 - **No query language.** Every read is a lookup by key or a small set of keys.
 - **No time logic.** Stores return assignments as saved. The core applies time windows using its clock, so every adapter gets expiry right automatically.
@@ -589,12 +603,22 @@ It runs the same behavioural tests that the official adapters pass: idempotency,
 Schema version 1 (M3):
 
 ```
+v1 (M3)
 wardn_assignments        (user_id, role, scope_type, scope_id,
                           starts_at NULL, expires_at NULL, created_at, updated_at)
                           PK (user_id, scope_type, scope_id, role)   IX (scope_type, scope_id)
 wardn_scope_links        (child_type, child_id, parent_type, parent_id, updated_at)
                           PK (child_type, child_id)
 wardn_schema_migrations  (version, applied_at)
+
+v2 (M5)
+wardn_roles              (id PK, owner_type, owner_id, name, name_key, description,
+                          version, created_at, updated_at)
+                          UNIQUE (owner_type, owner_id, name_key)
+wardn_role_rules         (role_id, position, effect, permission)    PK (role_id, position)
+                          effect ∈ {allow, deny}; only allow is written in this release (D2)
+wardn_role_assignable    (role_id, position, scope_type)            PK (role_id, position)
+wardn_assignments        + expiry_reported_at NULL                  IX (expires_at), IX (role)
 ```
 
 Decisions:
@@ -604,9 +628,13 @@ Decisions:
 - **Global is stored as an empty type and ID**, so all rows use the same key shape.
 - **Table names come only from a validated prefix** (`WithTablePrefix`, default `wardn_`); every value is a query parameter.
 
-Tables are added only when the code that uses them ships, each as a new migration version. Custom roles (`wardn_roles`, `wardn_role_rules` with an `effect` column, `wardn_role_assignable`) arrive in M5, and expiry reporting (`expiry_reported_at`) arrives with the sweeper. Before v1.0 nothing depends on the schema, so adding tables then costs nothing, and no table exists without tests exercising it.
+Tables are added only when the code that uses them ships, each as a new migration version, so no table exists without tests exercising it.
 
-**Migration rules:** released migrations are never edited, only appended; every statement is idempotent (`IF NOT EXISTS`), because MySQL cannot run DDL inside a transaction; concurrent startups are safe (a Postgres advisory lock or MySQL `GET_LOCK`, released even if the caller's context is cancelled, with the connection discarded if release fails); and a database migrated by a *newer* wardn is refused (`ErrSchemaTooNew`) rather than used by an older one.
+- **Uniqueness is enforced by the database** (`UNIQUE (owner_type, owner_id, name_key)`). wardn computes the normalised `name_key`; the store never normalises.
+- **Versioned updates** are a single `UPDATE … WHERE id = ? AND version = ?`; zero rows changed means a conflict, or a missing role.
+- **Admin listings** compare and sort in byte order (`COLLATE "C"` on Postgres, whose default sorts by locale), so pagination is identical on every database.
+
+**Migration rules:** released migrations are never edited, only appended; every step is safe to run twice, either through `IF NOT EXISTS` or through an existence check before steps that have no such form (adding a column, or creating an index on MySQL), because MySQL cannot run DDL inside a transaction and a migration interrupted halfway must simply run again (tested on every database); concurrent startups are safe (a Postgres advisory lock or MySQL `GET_LOCK`, released even if the caller's context is cancelled, with the connection discarded if release fails); and a database migrated by a *newer* wardn is refused (`ErrSchemaTooNew`) rather than used by an older one.
 
 Migrations are automatic and versioned: `wardn.New` runs them through the optional `wardn.Migrator` interface. Products can set `Config.ManualMigrations` and run `Store.Migrate` from their own deploy pipeline instead.
 
@@ -630,7 +658,7 @@ The full analysis, including attackers, trust boundaries, assumptions, and every
 | Revoked access still works (stale cache) | No cross-request cache by default; when enabled, every change invalidates it (§12) |
 | Temporary access outlives its window | Time windows enforced on every check (rule 7); no dependence on a cleanup job; cache entries never outlive the nearest expiry |
 | Admin locks users out with a confusing deny | Custom roles are grants-only in v1; every deny `Decision` names the role and scope responsible |
-| No record of who granted what | `OnChange` receives every management event with actor, target, role, scope, and time; `OnDecision` receives every check |
+| No record of who granted what | `OnChange` is called *before* every change (assignments, roles, links, expiries) with actor, target, role, scope and time, and can veto it; if the change then fails, it is told. `OnDecision` receives every check |
 | Injection through IDs | All storage access is parameterised; IDs are length- and character-validated |
 | Information leakage in errors | Default HTTP responses do not reveal permission names or roles |
 
@@ -793,7 +821,7 @@ The security pipeline is built **before any feature code**, so every line of war
 | **M2: Core engine** | Policy loading and validation, scopes and hierarchy, evaluation engine (all seven rules), `assignable_at`, time-limited assignments with injectable clock, per-request memoisation, memory store, `wardntest` | Every rule tested; property tests and fuzzing in place |
 | **M3: Storage** | SQL store (Postgres, MySQL, MariaDB, SQLite), conformance suite, versioned migrations, real-database CI | All adapters pass `storetest` in CI against real databases |
 | **M4: HTTP and tooling** | `Require` / `RequireAny`, `ScopeFrom` with `PathValue` (works with chi, no adapter), error handling, `wardntest.AuditRoutes`, `cmd/wardn check` and `gen`, signed release workflow | Every HTTP path tested, including fail-closed behaviour |
-| **M5: Custom roles** | Runtime roles (grants-only), escalation guard, introspection APIs, audit hooks, expiry sweeper | Escalation and isolation test suites pass |
+| **M5: Custom roles** | Runtime roles (grants-only) with spoof-resistant names, escalation guard, guarded `Assign`/`Revoke`, introspection APIs (`Roles`, `AssignableRoles`, `Members`, `CustomRole`), audit events (`OnChange`), expiry sweeper, schema v2 | Escalation and isolation test suites pass |
 | **M6: Completeness** | MongoDB store, opt-in cross-request cache (memory, Redis) | Mongo passes `storetest`; cache invalidation and expiry tests pass |
 | **M7: Hardening** | Adversarial suite, extended fuzzing campaign, mutation testing, internal security review, **independent external audit** | No open high or critical findings |
 | **M8: Proof and documentation** | Reference applications (multi-branch bank, multi-tenant SaaS, flat app, school system), quick start, concepts, recipes, API reference; fresh-developer usability test; benchmarks | All four reference apps built cleanly on the public API; usability test passes unaided |
@@ -837,6 +865,8 @@ These numbers form the basis of the internal case and, later, the public story.
 | D6 | Runtime custom roles | In scope for v1.0, with the escalation guard on by default (§6). | Every serious product admin panel needs a "Create role" screen. |
 | D7 | Delivery approach | Built complete, hardened and externally audited before any product adopts it; validated against four reference applications rather than a pilot product (§15). | It becomes the team standard on announcement; a library must not be hardened while products depend on it. |
 | D8 | Supported Go versions | The two most recent Go releases, matching Go's own security-support policy (currently 1.26 and 1.27). | Older Go releases no longer receive security fixes. |
+| D9 | Custom role names | One script, no invisible characters or combining marks, uniqueness ignoring case, spacing, `_` and `-`, checked against system roles and ancestors' roles. | Role names are chosen by admins and read by other admins; anything that lets two names look alike enables T15. Combining marks are refused because the standard library cannot normalise Unicode; precomposed letters (é, Ọ) work. Adopting `golang.org/x/text` normalisation later would relax this. |
+| D10 | Audit timing | `OnChange` runs *before* the write and can veto it; if the write then fails, it is called again with `Event.Err` set. | Fail closed: nothing changes without a record. The follow-up call keeps the trail accurate when a store write fails. |
 
 ## 18. Open questions
 

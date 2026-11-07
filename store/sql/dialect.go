@@ -70,22 +70,28 @@ type dialect struct {
 	// its default collations are case-, accent- and trailing-space-
 	// insensitive (threat model T13).
 	id, name, integer string
-	tableSuffix       string
-	inlineIndexes     bool // MySQL cannot CREATE INDEX IF NOT EXISTS
-	numbered          bool // $1, $2 placeholders instead of ?
-	upsertTemplate    string
+	perm, text        string // permission names (128 bytes); descriptions (512 bytes)
+	// byteOrder makes comparisons and ORDER BY use byte order, so pages of
+	// Members are stable and identical on every database.
+	byteOrder      string
+	tableSuffix    string
+	inlineIndexes  bool // MySQL cannot CREATE INDEX IF NOT EXISTS
+	numbered       bool // $1, $2 placeholders instead of ?
+	upsertTemplate string
 }
 
 func dialectFor(d Dialect) (dialect, error) {
 	switch d {
 	case Postgres:
 		return dialect{kind: d, id: "VARCHAR(256)", name: "VARCHAR(64)", integer: "BIGINT",
+			perm: "VARCHAR(128)", text: "VARCHAR(512)", byteOrder: ` COLLATE "C"`,
 			numbered: true, upsertTemplate: "ON CONFLICT (%s) DO UPDATE SET %s"}, nil
 	case SQLite:
-		return dialect{kind: d, id: "TEXT", name: "TEXT", integer: "INTEGER",
+		return dialect{kind: d, id: "TEXT", name: "TEXT", integer: "INTEGER", perm: "TEXT", text: "TEXT",
 			upsertTemplate: "ON CONFLICT (%s) DO UPDATE SET %s"}, nil
 	case MySQL:
 		return dialect{kind: d, id: "VARBINARY(256)", name: "VARBINARY(64)", integer: "BIGINT",
+			perm: "VARBINARY(128)", text: "VARBINARY(512)",
 			tableSuffix: " ENGINE=InnoDB", inlineIndexes: true, upsertTemplate: "ON DUPLICATE KEY UPDATE %[2]s"}, nil
 	case DetectDialect:
 	}

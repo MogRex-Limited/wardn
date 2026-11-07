@@ -91,11 +91,56 @@ type compiledScopeType struct {
 }
 
 type compiledRole struct {
-	name         string
+	name         string // system role name, or custom role ID
 	description  string
 	allow        []string
 	deny         []string
 	assignableAt map[string]bool // nil means anywhere; "global" for Global
+
+	custom      bool   // a runtime custom role
+	displayName string // custom roles: the name shown to people
+	owner       Scope  // custom roles: the scope that owns it
+}
+
+// label names the role in decisions and errors.
+func (r *compiledRole) label() string {
+	if r.custom {
+		return fmt.Sprintf("%q (%s)", r.displayName, r.name)
+	}
+	return fmt.Sprintf("%q", r.name)
+}
+
+// compileCustomRole turns a stored custom role into an evaluable one. It
+// keeps only patterns that are still meaningful under the current policy:
+// a permission removed from the catalog simply stops being granted, the
+// same way a deleted role stops granting (evaluation rule 6). Denies are
+// never read from storage: custom roles only grant (design decision D2).
+func (cp *compiledPolicy) compileCustomRole(r *CustomRole) *compiledRole {
+	out := &compiledRole{name: r.ID, description: r.Description, custom: true, displayName: r.Name, owner: r.Owner}
+	for _, p := range r.Allow {
+		if !validPattern(p) {
+			continue
+		}
+		if _, inCatalog := cp.permissions[p]; inCatalog || isWildcard(p) {
+			out.allow = append(out.allow, p)
+		}
+	}
+	out.assignableAt = map[string]bool{}
+	for _, t := range r.AssignableAt {
+		out.assignableAt[t] = true
+	}
+	if len(out.assignableAt) == 0 {
+		out.assignableAt[scopeTypeName(r.Owner)] = true
+	}
+	return out
+}
+
+// scopeTypeName returns a scope's type, or "global" for Global.
+func scopeTypeName(s Scope) string {
+	if s.IsGlobal() {
+		return globalName
+	}
+	return s.Type
 }
 
 // assignableAt reports whether the role may be assigned at scope s.

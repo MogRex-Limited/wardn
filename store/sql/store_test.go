@@ -96,12 +96,12 @@ func TestQueries(t *testing.T) {
 		t.Errorf("mysql upsert: %s", my.q.assign)
 	}
 	// MySQL columns are binary so IDs compare exactly (threat model T13).
-	ddl := strings.Join(my.migrations()[0], "\n")
+	ddl := stepsSQL(my.migrations())
 	if !strings.Contains(ddl, "user_id    VARBINARY(256)") || strings.Contains(ddl, "VARCHAR") {
 		t.Errorf("mysql columns are not binary:\n%s", ddl)
 	}
 	lite := MustNew(fakeDB(t), WithDialect(SQLite))
-	if strings.Contains(lite.q.parent, "$") || !strings.Contains(strings.Join(lite.migrations()[0], "\n"), "CREATE INDEX IF NOT EXISTS") {
+	if strings.Contains(lite.q.parent, "$") || !strings.Contains(stepsSQL(lite.migrations()), "CREATE INDEX IF NOT EXISTS") {
 		t.Errorf("sqlite queries: %s", lite.q.parent)
 	}
 }
@@ -144,4 +144,22 @@ func TestTimeRounding(t *testing.T) {
 	if got := fromMicros(startMicros(exact)); !got.Equal(exact) || got.Location() != time.UTC {
 		t.Errorf("round trip = %v", got)
 	}
+}
+
+func TestLatestSchemaVersion(t *testing.T) {
+	for _, d := range []Dialect{Postgres, MySQL, SQLite} {
+		if n := len(MustNew(fakeDB(t), WithDialect(d)).migrations()); n != LatestSchemaVersion {
+			t.Errorf("%v: %d migrations, LatestSchemaVersion is %d", d, n, LatestSchemaVersion)
+		}
+	}
+}
+
+func stepsSQL(migrations [][]step) string {
+	var b strings.Builder
+	for _, m := range migrations {
+		for _, st := range m {
+			b.WriteString(st.sql + "\n")
+		}
+	}
+	return b.String()
 }
