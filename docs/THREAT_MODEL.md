@@ -108,6 +108,22 @@ wardn validates all of these:
 
 ---
 
+## 5a. Test status
+
+Threats with a `TestThreat_` test, by milestone:
+
+| Status | Threats |
+|---|---|
+| **Tested (M2)** | T01, T07, T08, T09, T10, T11, T12, T13, T14, T16, T18, T23, T25 |
+| Planned for M4 (HTTP) | T17, T20 |
+| Planned for M5 (custom roles, audit) | T03, T04, T05, T06, T15, T21, T22 |
+| Planned for M6 (cache) | T24 |
+| Planned for M8 (docs, reference apps) | T02 |
+| Partly mitigated, test planned | T19: the clock is injectable and expiry is tested at exact boundaries; skew behaviour is documented in M8 |
+| Supply chain (process, not unit tests) | S01–S07: enforced by CI gates, repository settings and review (docs/MAINTAINING.md) |
+
+Beyond the named threat tests, M2 adds a property test that checks the engine against an independent reference implementation of the evaluation rules: over 400 random worlds and about 130,000 checks per run. It also adds fuzz targets for policy parsing, permission and ID validation, and `Check` inputs.
+
 ## 6. Out of scope
 
 wardn doesn't defend against these; the product and its infrastructure must.

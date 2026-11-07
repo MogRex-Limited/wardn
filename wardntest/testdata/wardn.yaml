@@ -1,0 +1,16 @@
+version: 1
+scopes:
+  organisation: {}
+  branch: { parent: organisation }
+permissions:
+  customer:view: View customers
+  loan:create: Create loans
+  loan:approve: Approve loans
+roles:
+  admin: ["*"]
+  teller:
+    assignable_at: [branch]
+    allow: [customer:view, loan:create]
+  auditor: [customer:view]
+  suspended:
+    deny: ["*"]
