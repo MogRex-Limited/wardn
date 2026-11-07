@@ -1,0 +1,110 @@
+# golangci-lint v2 configuration.
+#
+# wardn is security-critical: lint findings block merging. Suppressing a
+# finding requires a specific //nolint:<linter> directive with a written
+# explanation (enforced by nolintlint).
+version: "2"
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    # Security
+    - gosec       # security problems (injection, weak crypto, unsafe, ...)
+    - depguard    # forbidden imports (see settings)
+    - forbidigo   # forbidden calls: output, network, process exit
+    - noctx       # network/SQL calls must take a context
+    - bodyclose
+    - sqlclosecheck
+    - rowserrcheck
+    # Correctness
+    - errorlint   # correct error wrapping and comparison
+    - nilerr
+    - exhaustive  # every enum case handled (e.g. allow/deny effects)
+    - contextcheck
+    - durationcheck
+    - makezero
+    - musttag     # struct fields decoded from YAML/JSON carry tags
+    - errchkjson
+    - wastedassign
+    # Quality
+    - revive      # includes doc comments on exported identifiers
+    - gocritic
+    - errname
+    - misspell
+    - unconvert
+    - unparam
+    - predeclared
+    - usestdlibvars
+    - gocheckcompilerdirectives
+    - nolintlint
+
+  settings:
+    depguard:
+      rules:
+        library:
+          list-mode: lax
+          files:
+            - "$all"
+            - "!$test"
+          deny:
+            - pkg: unsafe
+              desc: "wardn never uses unsafe (threat model S06)"
+            - pkg: os/exec
+              desc: "wardn never runs external processes (threat model S06)"
+            - pkg: plugin
+              desc: "wardn never loads code at runtime (threat model S06)"
+            - pkg: math/rand
+              desc: "use crypto/rand; generated IDs must be unpredictable"
+            - pkg: log$
+              desc: "libraries must not log globally; report through hooks or a caller-supplied *slog.Logger"
+            - pkg: gopkg.in/yaml.v3
+              desc: "archived; use go.yaml.in/yaml/v3"
+
+    forbidigo:
+      forbid:
+        - pattern: ^(fmt\.Print.*|print|println)$
+          msg: "libraries must not write to stdout; return errors or use hooks"
+        - pattern: ^http\.(Get|Head|Post|PostForm|Client|DefaultClient|DefaultTransport|Transport)$
+          msg: "wardn makes no outbound network calls (threat model S06)"
+        - pattern: ^net\.(Dial|DialTimeout|DialTCP|DialUDP|DialIP|DialUnix|Listen|ListenTCP|ListenUDP|ListenPacket)$
+          msg: "wardn makes no network connections (threat model S06)"
+        - pattern: ^os\.(Exit|Setenv|Unsetenv|Chdir)$
+          msg: "libraries must not change process state"
+
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+    exhaustive:
+      default-signifies-exhaustive: false
+
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+
+  exclusions:
+    rules:
+      # The CLI is a program, not a library: it may print and exit.
+      - path: ^cmd/
+        linters:
+          - forbidigo
+
+issues:
+  # Never hide findings: by default golangci-lint reports one issue per line
+  # and caps repeated issues, which can mask a security finding behind an
+  # unrelated one on the same line.
+  uniq-by-line: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes:
+        - github.com/MogRex-Limited/wardn

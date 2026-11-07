@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly, so newly disclosed vulnerabilities are caught even without changes.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+# Least privilege: jobs get a read-only token unless they ask for more.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Test against exactly the Go version under test; never auto-download a
+  # different toolchain from the go.mod toolchain line.
+  GOTOOLCHAIN: local
+
+jobs:
+  test:
+    name: Test (Go ${{ matrix.go }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # The two Go releases that receive security fixes (design decision D8).
+        go: ["1.26.x", "1.27.x"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ matrix.go }}
+          cache: false # no shared caches: avoids cache-poisoning attacks
+      - name: Verify module checksums
+        run: go mod verify
+      - name: Build
+        run: go build ./...
+      - name: Test (race detector, shuffled order)
+        run: go test -race -shuffle=on -count=1 -covermode=atomic -coverprofile=coverage.out ./...
+      - name: Coverage summary
+        run: go tool cover -func=coverage.out | tail -n 1
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.x"
+          cache: false
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
+
+  supply-chain:
+    name: Supply chain
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.x"
+          cache: false
+      - name: go.mod and go.sum are tidy
+        run: go mod tidy -diff
+      - name: Verify module checksums
+        run: go mod verify
+      - name: Direct dependencies are allowlisted
+        run: ./scripts/check-deps.sh
+      - name: Known vulnerabilities (govulncheck)
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
