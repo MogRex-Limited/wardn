@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("[{\"user\":\"nobody\",\"role\":\"super_admin\"}]")

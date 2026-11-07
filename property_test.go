@@ -194,7 +194,10 @@ func naiveMatch(pattern, perm string) bool {
 }
 
 func TestProperty_EngineMatchesReference(t *testing.T) {
-	const worlds = 400
+	worlds := 400
+	if testing.Short() {
+		worlds = 40
+	}
 	var checks, allows, denies int
 	for seed := range uint64(worlds) {
 		r := rand.New(rand.NewPCG(seed, 0x77617264)) //nolint:gosec // G404: seeded for reproducible tests, not security

@@ -282,8 +282,8 @@ Products grant these to whichever roles should have them, like any other permiss
 
 1. **Create a role:** the actor needs `wardn:roles.manage` at the owner scope, *and* must hold every permission they put into the role.
 2. **Edit or delete a role:** the same, and the actor must also hold every permission the role *already* has, so nobody can strip a role they could not have granted.
-3. **Assign a role:** the actor needs `wardn:roles.assign`, *and* must hold every permission the role grants.
-4. **Revoke a role:** same as assign. (This stops a branch manager from stripping an organisation admin.) A leftover assignment of a role that no longer exists grants nothing, so revoking it needs only `wardn:roles.assign`.
+3. **Assign a role:** the actor needs `wardn:roles.assign`, *and* must hold every permission the role grants **and every permission it denies**. A deny role restricts its holder, so assigning one is as powerful as granting what it denies: only someone who holds everything `suspended` denies (`*`) can suspend, and a branch manager cannot lock out an organisation admin (security review F1b).
+4. **Revoke a role:** same as assign, denies included: lifting a suspension restores what it denied, which the actor must hold (security review F1). (This also stops a branch manager from stripping an organisation admin.) A leftover assignment of a role that no longer exists grants nothing, so revoking it needs only `wardn:roles.assign`.
 5. **System roles cannot be edited or deleted** at runtime.
 
 **Holding a wildcard** means holding *all* of it: an allow covering the whole wildcard, and no deny anywhere inside it. An actor who holds `loan:create`, `loan:view` and `loan:approve` one by one cannot create a `loan:*` role, because it would also grant every `loan:` permission added later (threat model T06). An actor with `*` minus a deny on `loan:approve` cannot grant `*` or `loan:*`.
@@ -539,6 +539,7 @@ type AssignmentStore interface {
     RevokeRole(ctx context.Context, role string) error                // every assignment of a role
     ExpiredUnreported(ctx context.Context, t time.Time, limit int) ([]Assignment, error)
     MarkExpiryReported(ctx context.Context, as []Assignment) error    // never marks a newer window
+    RevokeExpired(ctx context.Context, a Assignment) error            // atomic: only if ExpiresAt is unchanged
 }
 
 type Assignment struct {
@@ -658,7 +659,7 @@ The full analysis, including attackers, trust boundaries, assumptions, and every
 | Revoked access still works (stale cache) | No cross-request cache by default; when enabled, every change invalidates it (§12) |
 | Temporary access outlives its window | Time windows enforced on every check (rule 7); no dependence on a cleanup job; cache entries never outlive the nearest expiry |
 | Admin locks users out with a confusing deny | Custom roles are grants-only in v1; every deny `Decision` names the role and scope responsible |
-| No record of who granted what | `OnChange` is called *before* every change (assignments, roles, links, expiries) with actor, target, role, scope and time, and can veto it; if the change then fails, it is told. `OnDecision` receives every check |
+| No record of who granted what | `OnChange` is called *before* every change, after the cache is invalidated (so it never records an abandoned change) (assignments, roles, links, expiries) with actor, target, role, scope and time, and can veto it; if the change then fails, it is told. `OnDecision` receives every check |
 | Injection through IDs | All storage access is parameterised; IDs are length- and character-validated |
 | Information leakage in errors | Default HTTP responses do not reveal permission names or roles |
 
@@ -704,6 +705,7 @@ In banking, a stale permission is a security bug: a revocation must take effect 
 ```go
 wardn.Config{
     Cache:    wardnredis.MustNew(rdb, "lending-app"), // shared by every instance; or wardn.NewMemoryCache() for one instance
+    CacheSecret: secretFromVault,                   // 32+ random bytes, the same on every instance; required for shared caches
     CacheTTL: 5 * time.Second,                      // the default; at most 5 minutes
 }
 ```
@@ -713,6 +715,7 @@ wardn.Config{
 - **Invalidation before and after every change.** Assign, revoke, role edits and deletions, links, and removal of expired assignments increment the affected counters *before* writing, and abort if that fails, so nothing changes without invalidation. They increment again *after* writing, so an entry that a concurrent reader cached from the old data in between is never reachable. If only the second increment fails, the change is saved and `ErrCacheInvalidation` is returned (retrying is safe). Moving a scope invalidates both its old and its new tenant.
 - **A failing cache never makes wardn wrong.** Cache read errors, and values that don't decode, fall back to the store. Everything read from the cache is validated exactly like store data.
 - **Keys are hashes** (SHA-256 of structured parts), so IDs, which may be personal data, never appear in the cache, and separators can't be injected.
+- **Entries are sealed** with HMAC-SHA256 over their key and value (`Config.CacheSecret`, required for any shared cache). Whoever can write to the cache server still can't forge an entry or move one to another key; entries that fail verification are misses. This closed a fuzzing finding: a forged entry used to grant super-admin (docs/SECURITY_REVIEW.md, FZ1). Version counters are not sealed; a lost counter can at worst revive old genuine entries for one TTL, which is why Redis must not evict them.
 - **The TTL is only a safety net**, for changes wardn can't see: edits made directly in the database, or scope moves when `Config.ParentOf` reads parents from the product's own data. After such changes, call `w.InvalidateCache(ctx, scopes...)`.
 - **`wardn.NewMemoryCache()` is correct only for a single instance**, because other instances can't see its counters. With more than one instance, use the shared Redis cache (`wardn/cache/redis`, which works with Redis and Valkey). It needs a namespace per application and a private server (threat model T24).
 - Any cache implementation must pass the `cachetest` conformance suite, which includes atomic counters under concurrent increments.
@@ -877,6 +880,8 @@ These numbers form the basis of the internal case and, later, the public story.
 | D10 | Audit timing | `OnChange` runs *before* the write and can veto it; if the write then fails, it is called again with `Event.Err` set. | Fail closed: nothing changes without a record. The follow-up call keeps the trail accurate when a store write fails. |
 | D11 | What the cache holds | Store data (assignments, parents, custom roles), never decisions; version counters bumped before and after every change. | Decisions depend on the clock; data doesn't. Caching data keeps time windows exact without any expiry arithmetic, and keeps one evaluation path, cached or not. |
 | D12 | SQL Server | Not supported until a product needs it. The organisation's products use PostgreSQL and MySQL, which are fully supported and tested (with MariaDB and SQLite). | Untested database support is a liability in a security library. Doing SQL Server correctly needs 2019+ binary UTF-8 collations and a new key design; that work is justified only by a real user. |
+| D13 | Guard scope | The escalation guard is evaluated at the scope where the change happens. An actor's denies at *child* scopes do not limit what they may grant at the parent (security review F10). | Checking every descendant is unbounded. A deny constrains its holder, not what that holder may delegate above it. To restrict someone, put the deny on the roles of the people being restricted. |
+| D14 | Management errors reveal nothing | Without `wardn:roles.manage` at a role's owner, `UpdateRole` and `DeleteRole` answer exactly as for a missing role (`ErrRoleNotFound`, 404). Guarded deletes of missing roles are therefore not silent; `System()` deletes stay idempotent. | Existence, versions and nearby names are information an attacker can use (security review F5). |
 
 ## 18. Open questions
 

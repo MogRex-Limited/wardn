@@ -370,6 +370,16 @@ func (s *Store) MarkExpiryReported(ctx context.Context, as []wardn.Assignment) e
 	return nil
 }
 
+// RevokeExpired implements wardn.Store: one conditional delete, so an
+// assignment given a new window meanwhile is left alone.
+func (s *Store) RevokeExpired(ctx context.Context, a wardn.Assignment) error {
+	_, err := s.assignments.DeleteOne(ctx, bson.D{{Key: "_id", Value: assignmentID(a.User, a.Role, a.Scope)}, {Key: "e", Value: endMicros(a.ExpiresAt)}})
+	if err != nil {
+		return fmt.Errorf("wardnmongo: removing expired assignment: %w", err)
+	}
+	return nil
+}
+
 // --- scope links -----------------------------------------------------------
 
 // Link implements wardn.Store.

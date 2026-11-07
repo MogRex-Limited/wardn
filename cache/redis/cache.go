@@ -9,9 +9,17 @@
 //		Cache: wardnredis.MustNew(rdb, "lending-app"),
 //	})
 //
-// The Redis server must be private to the application, with authentication
-// and TLS: anyone who can write to it can change what wardn reads (threat
-// model T24). The namespace keeps applications that share a server apart.
+// Requirements (threat model T24):
+//   - Configure wardn.Config.CacheSecret: entries are signed, so whoever can
+//     write to the server still cannot forge one.
+//   - Keep the server private, with authentication and TLS.
+//   - Use maxmemory-policy noeviction or a volatile-* policy. wardn's
+//     version counters have no expiry and must never be evicted: if a
+//     counter disappears, it restarts from 0 and old entries (still
+//     correctly signed) can become reachable again until their TTL ends.
+//
+// Redis Cluster works: every key of one namespace shares a hash slot. The
+// namespace keeps applications that share a server apart.
 package wardnredis
 
 import (
@@ -44,7 +52,9 @@ func New(rdb redis.UniversalClient, namespace string) (*Cache, error) {
 	if !validNamespace(namespace) {
 		return nil, fmt.Errorf("wardnredis: invalid namespace %q: use 1-64 lowercase letters, digits, '-' and '_'", namespace)
 	}
-	p := "wardn:" + namespace + ":"
+	// The {namespace} hash tag keeps every key of one application in the
+	// same Redis Cluster slot, so multi-key commands (MGET, MULTI) work.
+	p := "wardn:{" + namespace + "}:"
 	return &Cache{rdb: rdb, entries: p + "e:", counters: p + "c:", namespace: namespace}, nil
 }
 

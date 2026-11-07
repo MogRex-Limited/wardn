@@ -85,10 +85,11 @@ func (w *Warden) AssignableRoles(ctx context.Context, scope Scope) ([]RoleInfo, 
 	if !evaluate(gs, Decision{Permission: PermRolesAssign}).Allowed {
 		return nil, nil
 	}
-	// A role is offered only if the actor holds everything it grants.
-	// Deny-only roles (such as "suspended") grant nothing, so they pass.
+	// A role is offered only if the actor holds everything it grants and
+	// everything it denies, the same rule Assign enforces (security review F1).
 	return slices.DeleteFunc(roles, func(r RoleInfo) bool {
-		return slices.ContainsFunc(r.Allow, func(p string) bool { return !holds(gs, p) })
+		lacks := func(p string) bool { return !holds(gs, p) }
+		return slices.ContainsFunc(r.Allow, lacks) || slices.ContainsFunc(r.Deny, lacks)
 	}), nil
 }
 
@@ -159,7 +160,7 @@ func (w *Warden) SweepExpired(ctx context.Context, opts ...SweepOption) (int, er
 		}
 		for _, a := range batch {
 			if w.onChange != nil {
-				ev := Event{Type: EventExpired, Actor: SystemActor, At: now, User: a.User, Role: a.Role,
+				ev := Event{Type: EventExpired, System: true, At: now, User: a.User, Role: a.Role,
 					Scope: a.Scope, StartsAt: a.StartsAt, ExpiresAt: a.ExpiresAt}
 				if err := w.onChange(ctx, ev); err != nil {
 					return total, fmt.Errorf("%w: %w", ErrAuditRejected, err)
@@ -179,7 +180,10 @@ func (w *Warden) SweepExpired(ctx context.Context, opts ...SweepOption) (int, er
 				if err != nil {
 					return total, err
 				}
-				if err := w.store.Revoke(ctx, a.User, a.Role, a.Scope); err != nil {
+				// Remove it only if it still has the window that expired: if
+				// it was assigned again meanwhile, the new grant stays
+				// (security review F4).
+				if err := w.store.RevokeExpired(ctx, a); err != nil {
 					return total, fmt.Errorf("wardn: removing expired assignment: %w", err)
 				}
 				if len(counters) > 0 {

@@ -56,7 +56,7 @@ func TestValidateRoleName(t *testing.T) {
 			t.Errorf("%q: got %v, want error containing %q", n, err, want)
 		}
 	}
-	if roleNameKey("Org  _Admin-") != "org admin" || roleNameKey("ORG-ADMIN") != roleNameKey("org_admin") {
+	if roleNameKey("Org  _Admin-") != roleNameKey("org admin") || roleNameKey("ORG-ADMIN") != roleNameKey("org_admin") || roleNameKey("Desk") == roleNameKey("Disk") {
 		t.Error("roleNameKey does not normalise")
 	}
 }
@@ -67,7 +67,7 @@ func TestCreateRoleAndEvaluate(t *testing.T) {
 		Name: "Senior Teller", Description: "Tellers who approve loans",
 		Allow: []string{"customer:view", "loan:*"}, AssignableAt: []string{"branch"},
 	})
-	if !strings.HasPrefix(senior.ID, "cr-") || senior.Version != 1 || senior.Owner != org1 || senior.NameKey != "senior teller" || senior.CreatedAt.IsZero() {
+	if !strings.HasPrefix(senior.ID, "cr-") || senior.Version != 1 || senior.Owner != org1 || senior.NameKey != roleNameKey("Senior Teller") || senior.CreatedAt.IsZero() {
 		t.Fatalf("created role = %+v", senior)
 	}
 
@@ -312,8 +312,9 @@ func TestAssignableRoles(t *testing.T) {
 	for _, r := range roles {
 		names = append(names, r.Name)
 	}
-	// branch_manager can grant what it holds, plus the deny-only role.
-	want := []string{"branch_manager", "loan_officer", "suspended", "teller", "Viewer"}
+	// branch_manager can grant what it holds. Not "suspended": it denies
+	// everything, and the manager does not hold everything (review F1b).
+	want := []string{"branch_manager", "loan_officer", "teller", "Viewer"}
 	if !slices.Equal(names, want) {
 		t.Fatalf("AssignableRoles = %v, want %v", names, want)
 	}
@@ -401,7 +402,7 @@ func TestOnChange(t *testing.T) {
 	if !slices.Equal(types, want) {
 		t.Fatalf("events = %v\nwant %v", types, want)
 	}
-	if e := events[0]; e.Actor != SystemActor || e.User != "root" {
+	if e := events[0]; !e.System || e.Actor != "" || e.User != "root" {
 		t.Errorf("System() event = %+v", e)
 	}
 	if e := events[1]; e.Actor != "root" || e.User != "u" || e.Role != "teller" || e.Scope != branch1 || !e.ExpiresAt.Equal(t0.Add(time.Hour)) || !e.At.Equal(clock.Now()) {
@@ -476,7 +477,7 @@ func TestSweepExpired(t *testing.T) {
 		t.Fatalf("before expiry: %d, %v", n, err)
 	}
 	clock.Advance(time.Hour)
-	if n, err := w.SweepExpired(ctx); err != nil || n != 1 || len(expired) != 1 || expired[0].User != "a" || expired[0].Actor != SystemActor {
+	if n, err := w.SweepExpired(ctx); err != nil || n != 1 || len(expired) != 1 || expired[0].User != "a" || !expired[0].System {
 		t.Fatalf("first sweep: %d, %v, %+v", n, err, expired)
 	}
 	if n, _ := w.SweepExpired(ctx); n != 0 {
@@ -571,5 +572,25 @@ func TestHoldsAndCovers(t *testing.T) {
 		if got := holds(g(c.allow, c.deny), c.pattern); got != c.want {
 			t.Errorf("allow %v deny %v holds %q = %v, want %v", c.allow, c.deny, c.pattern, got, c.want)
 		}
+	}
+}
+
+// leakyMembersStore returns members of other scopes too.
+type leakyMembersStore struct{ *MemoryStore }
+
+func (l leakyMembersStore) Members(ctx context.Context, scope Scope, cursor string, limit int) ([]Assignment, string, error) {
+	page, next, err := l.MemoryStore.Members(ctx, scope, cursor, limit)
+	return append(page, Assignment{User: "intruder", Role: "super_admin", Scope: branch2}), next, err
+}
+
+func TestMembersIgnoresOtherScopesFromStore(t *testing.T) {
+	w, _ := newBank(t, func(c *Config) { c.Store = leakyMembersStore{NewMemoryStore()} })
+	assign(t, w, "tia", "teller", branch1)
+	page, _, err := w.Members(context.Background(), branch1, "", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page) != 1 || page[0].User != "tia" {
+		t.Fatalf("Members = %+v; another scope's member leaked through", page)
 	}
 }

@@ -323,6 +323,18 @@ func (s *Store) MarkExpiryReported(ctx context.Context, as []wardn.Assignment) e
 	})
 }
 
+// RevokeExpired implements wardn.Store: one conditional DELETE, so an
+// assignment given a new window meanwhile is left alone.
+func (s *Store) RevokeExpired(ctx context.Context, a wardn.Assignment) error {
+	_, err := s.db.ExecContext(ctx, s.d.bind("DELETE FROM "+s.t.assignments+
+		" WHERE user_id = ? AND role = ? AND scope_type = ? AND scope_id = ? AND expires_at = ?"),
+		a.User, a.Role, a.Scope.Type, a.Scope.ID, endMicros(a.ExpiresAt))
+	if err != nil {
+		return fmt.Errorf("wardnsql: removing expired assignment: %w", err)
+	}
+	return nil
+}
+
 // inTx runs fn in a transaction, committing if it succeeds.
 func (s *Store) inTx(ctx context.Context, fn func(*sql.Tx) error) error {
 	tx, err := s.db.BeginTx(ctx, nil)

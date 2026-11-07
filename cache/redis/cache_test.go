@@ -122,8 +122,9 @@ func TestTwoInstances(t *testing.T) {
 		t.Fatal(err)
 	}
 	store, ns := wardn.NewMemoryStore(), freshNamespace()
-	a := wardn.MustNew(wardn.Config{Policy: p, Store: store, Cache: MustNew(rdb, ns)})
-	b := wardn.MustNew(wardn.Config{Policy: p, Store: store, Cache: MustNew(rdb, ns)})
+	secret := []byte("same secret on every instance, 32+ bytes")
+	a := wardn.MustNew(wardn.Config{Policy: p, Store: store, Cache: MustNew(rdb, ns), CacheSecret: secret})
+	b := wardn.MustNew(wardn.Config{Policy: p, Store: store, Cache: MustNew(rdb, ns), CacheSecret: secret})
 	ctx := context.Background()
 	branch := wardn.NewScope("branch", "b1")
 	if err := a.Link(ctx, branch, wardn.NewScope("organisation", "o1")); err != nil {

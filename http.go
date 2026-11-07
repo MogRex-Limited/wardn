@@ -36,10 +36,13 @@ func (e *DeniedError) Error() string {
 // Unwrap makes errors.Is(err, ErrDenied) true.
 func (e *DeniedError) Unwrap() error { return ErrDenied }
 
-// HTTPStatus returns the HTTP status code for an error from wardn's
-// middleware: 401 when no user is authenticated, 403 when denied, 400 for
-// an invalid scope in the request, and 500 for anything else, such as a
-// store failure. wardn never lets a request through on error.
+// HTTPStatus returns the HTTP status code for an error from wardn: 401 when
+// no user is authenticated; 403 when denied or when the escalation guard
+// refuses; 400 for invalid input; 404 for an unknown custom role (also what
+// an actor without wardn:roles.manage sees for an existing one); 409 for an
+// edit conflict, a taken name or a role still in use; and 500 for anything
+// else, such as a store failure. Admin APIs can use it for management
+// errors too.
 func HTTPStatus(err error) int {
 	switch {
 	case err == nil:
@@ -48,8 +51,12 @@ func HTTPStatus(err error) int {
 		return http.StatusUnauthorized
 	case errors.Is(err, ErrDenied), errors.Is(err, ErrEscalation):
 		return http.StatusForbidden
-	case errors.Is(err, ErrInvalidInput):
+	case errors.Is(err, ErrInvalidInput), errors.Is(err, ErrNotAssignable):
 		return http.StatusBadRequest
+	case errors.Is(err, ErrRoleNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, ErrConflict), errors.Is(err, ErrRoleNameTaken), errors.Is(err, ErrRoleInUse):
+		return http.StatusConflict
 	}
 	return http.StatusInternalServerError
 }

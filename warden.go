@@ -40,6 +40,12 @@ type Config struct {
 	// more than one instance.
 	Cache Cache
 
+	// CacheSecret seals cache entries so they cannot be forged by whoever
+	// can write to a shared cache. Required with a shared Cache: at least 32
+	// random bytes from your secret store, the same on every instance.
+	// Optional with NewMemoryCache.
+	CacheSecret []byte
+
 	// CacheTTL is how long cache entries live (default 5s, at most 5m). It
 	// only matters for changes made behind wardn's back; wardn's own
 	// changes invalidate the cache immediately.
@@ -98,6 +104,7 @@ type Warden struct {
 	onChange     func(context.Context, Event) error
 	cache        Cache
 	cacheTTL     time.Duration
+	cacheSecret  []byte
 	errorHandler func(http.ResponseWriter, *http.Request, error)
 }
 
@@ -147,6 +154,13 @@ func New(cfg Config) (*Warden, error) {
 		return nil, fmt.Errorf("wardn: CacheTTL must be between 0 and %s", maxCacheTTL)
 	case w.cacheTTL == 0:
 		w.cacheTTL = DefaultCacheTTL
+	}
+	if w.cache != nil {
+		secret, err := cacheSecretFor(w.cache, cfg.CacheSecret)
+		if err != nil {
+			return nil, err
+		}
+		w.cacheSecret = secret
 	}
 	if m, ok := w.store.(Migrator); ok && !cfg.ManualMigrations {
 		ctx, cancel := context.WithTimeout(context.Background(), migrationTimeout)

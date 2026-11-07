@@ -73,6 +73,24 @@ func TestCacheChangesVisibleOnEveryInstanceImmediately(t *testing.T) {
 	}
 	wantCan(t, b, "w", "report:export", branch1, false)
 
+	// Moving a branch into another region of the same organisation: the
+	// cached assignment list for the branch lacks the new region's roles,
+	// so without invalidation the user would be wrongly denied.
+	r1c := NewScope("region", "r1c")
+	if err := a.Link(ctx, r1c, org1); err != nil {
+		t.Fatal(err)
+	}
+	b2 := NewScope("branch", "b2c")
+	if err := a.Link(ctx, b2, region1); err != nil {
+		t.Fatal(err)
+	}
+	assign(t, a, "y", "auditor", r1c)
+	wantCan(t, b, "y", "report:export", b2, false) // cached for b2c under org1
+	if err := a.Link(ctx, b2, r1c); err != nil {
+		t.Fatal(err)
+	}
+	wantCan(t, b, "y", "report:export", b2, true)
+
 	// Global changes.
 	assign(t, a, "x", "super_admin", Global)
 	wantCan(t, b, "x", "loan:approve", branch2, true)
@@ -247,7 +265,10 @@ func TestMemoryCacheEviction(t *testing.T) {
 // sharing a store and a cache, and after every change checks both against
 // the reference implementation.
 func TestProperty_CacheNeverStale(t *testing.T) {
-	const worlds = 60
+	worlds := 60
+	if testing.Short() {
+		worlds = 10
+	}
 	checks := 0
 	for seed := range uint64(worlds) {
 		r := rand.New(rand.NewPCG(seed, 0x6361636865)) //nolint:gosec // G404: seeded for reproducible tests, not security
@@ -334,4 +355,63 @@ func TestProperty_CacheNeverStale(t *testing.T) {
 		}
 	}
 	t.Logf("%d worlds, %d checks after random changes: no stale answer", worlds, checks)
+}
+
+// hookStore runs beforeWrite just before each Revoke reaches the store:
+// the moment between wardn's first cache invalidation and its write.
+type hookStore struct {
+	Store
+	beforeWrite func()
+}
+
+func (h *hookStore) Revoke(ctx context.Context, user, role string, scope Scope) error {
+	if h.beforeWrite != nil {
+		f := h.beforeWrite
+		h.beforeWrite = nil
+		f()
+	}
+	return h.Store.Revoke(ctx, user, role, scope)
+}
+
+// TestCacheReaderBetweenInvalidationAndWrite reproduces the race that the
+// second invalidation exists for: another instance reads (and caches) the
+// old data after the first invalidation but before the write lands. After
+// the write, that entry must be unreachable.
+func TestCacheReaderBetweenInvalidationAndWrite(t *testing.T) {
+	store := &hookStore{Store: NewMemoryStore()}
+	cache := NewMemoryCache()
+	a, clock := newBank(t, func(c *Config) { c.Store = store; c.Cache = cache })
+	b, err := New(Config{Policy: mustParse(t, bankYAML), Store: store, Cache: cache, Clock: clock})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assign(t, a, "u", "teller", branch1)
+	store.beforeWrite = func() {
+		// Instance B reads now: it sees the old data and caches it under
+		// the counters as they are after the first invalidation.
+		if !b.Can(context.Background(), "u", "loan:create", branch1) {
+			t.Error("setup: B should still see the grant before the write")
+		}
+	}
+	if err := a.System().Revoke(context.Background(), "u", "teller", branch1); err != nil {
+		t.Fatal(err)
+	}
+	wantCan(t, b, "u", "loan:create", branch1, false)
+}
+
+// TestCacheForgeryRejected: a forged entry, laid out like a sealed one but
+// without the secret, is never used.
+func TestCacheForgeryRejected(t *testing.T) {
+	cache := NewMemoryCache()
+	w, _ := newBank(t, func(c *Config) { c.Cache = cache })
+	assign(t, w, "tia", "teller", branch1)
+	wantCan(t, w, "tia", "loan:approve", branch1, false) // fills the cache
+	forged := append(make([]byte, 32), []byte(`[{"user":"tia","role":"super_admin","scope":{"type":"","id":""}}]`)...)
+	cache.mu.Lock()
+	for k, e := range cache.entries {
+		e.value = forged
+		cache.entries[k] = e
+	}
+	cache.mu.Unlock()
+	wantCan(t, w, "tia", "loan:approve", branch1, false)
 }
