@@ -49,8 +49,9 @@ const customRolePrefix = "cr-"
 
 // Limits on custom roles (threat model T23).
 const (
-	maxRoleNameLen  = 64  // characters
-	maxRolePatterns = 256 // entries in Allow
+	maxRoleNameLen   = 64  // characters
+	maxRolePatterns  = 256 // entries in Allow
+	maxRolesPerOwner = 500 // custom roles owned by one scope (security review F9)
 )
 
 // isCustomRoleID reports whether role is a custom role ID rather than a
@@ -71,13 +72,36 @@ func newCustomRoleID() (string, error) {
 }
 
 // roleNameKey normalises a role name for uniqueness checks, so names that
-// read the same to a person collide: case, underscores, hyphens and spacing
-// are ignored. "Org Admin", "org_admin" and "ORG-ADMIN" share a key.
+// read the same to a person collide (threat model T15): case, punctuation
+// and spacing are ignored, full-width letters count as ordinary ones, and
+// characters commonly mistaken for each other are folded together
+// ("0rg Admin", "Super Adm\u0131n" and "ORG-ADMIN!" all match "org_admin").
 func roleNameKey(name string) string {
-	fields := strings.FieldsFunc(strings.ToLower(name), func(r rune) bool {
-		return unicode.IsSpace(r) || r == '_' || r == '-'
-	})
-	return strings.Join(fields, " ")
+	var b strings.Builder
+	for _, r := range strings.ToLower(name) {
+		if r >= 0xFF01 && r <= 0xFF5E { // full-width ASCII
+			r = unicode.ToLower(r - 0xFEE0)
+		}
+		if folded, ok := confusables[r]; ok {
+			r = folded
+		}
+		switch {
+		case unicode.IsLetter(r), unicode.IsDigit(r):
+			b.WriteRune(r)
+		default:
+			b.WriteRune(' ')
+		}
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+// confusables maps characters to the letter they are most often mistaken
+// for in role names. Folding only makes more names collide, which is the
+// safe direction.
+var confusables = map[rune]rune{
+	'0': 'o', '1': 'l', 'i': 'l', '|': 'l', '3': 'e', '5': 's', '7': 't', '8': 'b',
+	'\u0131': 'l',                // dotless i
+	'\u0399': 'l', '\u03b9': 'l', // Greek iota (blocked by the script rule unless all-Greek)
 }
 
 // validateRoleName checks a custom role's display name. Names are shown to
@@ -112,6 +136,8 @@ func validateRoleName(name string) error {
 			}
 		case unicode.IsDigit(r), r == ' ':
 		case strings.ContainsRune("-_'.,&()/+", r):
+		case r >= 0xFF00 && r <= 0xFFEF:
+			return invalidf("role name contains a full-width or half-width character (%U); use ordinary letters", r)
 		case unicode.Is(unicode.Mn, r), unicode.Is(unicode.Me, r):
 			return invalidf("role name contains a combining mark (%U); use precomposed characters", r)
 		default:

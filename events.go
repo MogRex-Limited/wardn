@@ -24,9 +24,13 @@ const (
 // Event describes a change to who can do what, for the audit trail
 // (Config.OnChange). Fields that do not apply to a type are zero.
 type Event struct {
-	Type  EventType
-	Actor string // the acting user's ID, or SystemActor
-	At    time.Time
+	Type EventType
+	// Actor is the acting user's ID. It is empty when System is true.
+	Actor string
+	// System is true for changes made through Warden.System and by the
+	// expiry sweeper, where no user is acting.
+	System bool
+	At     time.Time
 
 	User   string // assignments: whose access changed
 	Role   string // assignments and roles: system role name or custom role ID
@@ -40,8 +44,10 @@ type Event struct {
 	After  *CustomRole // role creations and updates
 
 	// Err is set when OnChange is called a second time for the same change
-	// because the store failed after OnChange approved it: the change did
-	// not happen. OnChange's return value is ignored on that call.
+	// because it failed after OnChange approved it. A failed change may
+	// have been partly applied (for example, a cascade deletion that deleted
+	// the role but not all its assignments); the store is the source of
+	// truth. OnChange's return value is ignored on that call.
 	Err error
 }
 
@@ -59,34 +65,39 @@ func (w *Warden) change(ctx context.Context, ev Event, write func() error) error
 	if err != nil {
 		return err
 	}
-	if w.onChange != nil {
-		if err := w.onChange(ctx, ev); err != nil {
-			return fmt.Errorf("%w: %w", ErrAuditRejected, err)
-		}
-	}
-	// Invalidate before writing (if that fails, nothing changes) and again
-	// after, so an entry cached from the old data by a concurrent reader
-	// between the two is never reachable.
+	// Invalidate before writing, so that if invalidation fails nothing
+	// changes. This happens before the audit hook, so the hook never
+	// records a change that is then abandoned (security review F3).
 	if len(counters) > 0 {
 		if err := w.cache.Incr(ctx, counters); err != nil {
 			return fmt.Errorf("wardn: invalidating cache before %s: %w", ev.Type, err)
 		}
 	}
-	if err := write(); err != nil {
-		if w.onChange != nil {
-			ev.Err = err
-			_ = w.onChange(ctx, ev)
+	if w.onChange != nil {
+		if err := w.onChange(ctx, ev); err != nil {
+			return fmt.Errorf("%w: %w", ErrAuditRejected, err)
 		}
-		if errors.Is(err, ErrRoleNameTaken) || errors.Is(err, ErrConflict) || errors.Is(err, ErrRoleNotFound) {
-			return err
-		}
-		return fmt.Errorf("wardn: saving %s: %w", ev.Type, err)
 	}
+	writeErr := write()
 	w.memoFrom(ctx).forget()
+	// Invalidate again after writing, so an entry a concurrent reader cached
+	// from the old data in between is never reachable. This runs even if the
+	// write failed: it may have been partly applied (security review F2).
+	var cacheErr error
 	if len(counters) > 0 {
 		if err := w.cache.Incr(ctx, counters); err != nil {
-			return fmt.Errorf("%w (%s): %w", ErrCacheInvalidation, ev.Type, err)
+			cacheErr = fmt.Errorf("%w (%s): %w", ErrCacheInvalidation, ev.Type, err)
 		}
 	}
-	return nil
+	if writeErr != nil {
+		if w.onChange != nil {
+			ev.Err = writeErr
+			_ = w.onChange(ctx, ev)
+		}
+		if errors.Is(writeErr, ErrRoleNameTaken) || errors.Is(writeErr, ErrConflict) || errors.Is(writeErr, ErrRoleNotFound) {
+			return errors.Join(writeErr, cacheErr)
+		}
+		return errors.Join(fmt.Errorf("wardn: saving %s: %w", ev.Type, writeErr), cacheErr)
+	}
+	return cacheErr
 }

@@ -31,7 +31,7 @@ DB_ENV := WARDN_TEST_POSTGRES_DSN='postgres://postgres:wardn@127.0.0.1:56432/war
           WARDN_TEST_MONGO_URI='mongodb://127.0.0.1:56017' \
           WARDN_TEST_REDIS_ADDR='127.0.0.1:56379'
 
-.PHONY: check test test-modules integration db-up db-down lint fmt vuln deps tidy cover hooks
+.PHONY: check test test-modules integration db-up db-down lint fmt vuln deps tidy cover hooks mutation fuzz
 
 ## hooks: install the pre-push hook that runs `make check` (once per clone)
 hooks:
@@ -83,3 +83,11 @@ deps:
 ## tidy: check go.mod/go.sum are tidy and module checksums verify, in every module
 tidy:
 	@for m in $(MODULES); do (cd $$m && go mod tidy -diff && go mod verify) || exit 1; done
+
+## mutation: break each security rule in turn and check a test catches it (~2 min)
+mutation:
+	python3 scripts/mutate.py
+
+## fuzz: run every fuzz target (FUZZTIME each, default 60s)
+fuzz:
+	./scripts/fuzz.sh $(or $(FUZZTIME),60s)

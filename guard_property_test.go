@@ -15,7 +15,10 @@ import (
 // assignment that passes those checks, so it is not merely refusing
 // everything.
 func TestProperty_GuardNeverEscalates(t *testing.T) {
-	const worlds = 300
+	worlds := 300
+	if testing.Short() {
+		worlds = 60
+	}
 	var allowed, refused int
 	for seed := range uint64(worlds) {
 		r := rand.New(rand.NewPCG(seed, 0x6775617264)) //nolint:gosec // G404: seeded for reproducible tests, not security
@@ -49,7 +52,8 @@ func TestProperty_GuardNeverEscalates(t *testing.T) {
 			// What the reference says, before the attempt.
 			canAssign := wd.referenceAllowed(actor, PermRolesAssign, scope, t0)
 			holdsAll, hasWildcard := true, false
-			for _, p := range wd.policy.Roles[role].Allow {
+			// The actor must hold what the role grants and what it denies.
+			for _, p := range slices.Concat(wd.policy.Roles[role].Allow, wd.policy.Roles[role].Deny) {
 				hasWildcard = hasWildcard || isWildcard(p)
 				for _, perm := range w.policy.permList {
 					if naiveMatch(p, perm) && !wd.referenceAllowed(actor, perm, scope, t0) {
@@ -75,7 +79,7 @@ func TestProperty_GuardNeverEscalates(t *testing.T) {
 			}
 		}
 	}
-	if allowed < 50 || refused < 50 {
+	if allowed < worlds/6 || refused < worlds/6 {
 		t.Fatalf("unbalanced: %d allowed, %d refused", allowed, refused)
 	}
 	t.Logf("%d worlds: %d assignments allowed, %d refused, no escalation", worlds, allowed, refused)

@@ -41,6 +41,17 @@ Requirements: Go 1.26 or newer, plus `make`. The pinned linter and vulnerability
 6. **Public API changes need design agreement first.** Open an issue describing the change and update `docs/DESIGN.md` before writing code.
 7. **Small, focused pull requests.** One concern per pull request. Large changes are split.
 
+## Deeper checks
+
+Two slower checks run weekly in CI and on demand:
+
+```bash
+make mutation          # breaks each security rule in turn; a test must catch every one (~2 min)
+make fuzz FUZZTIME=5m  # runs every fuzz target
+```
+
+When you add or change a security rule, add a mutant for it to `scripts/mutate.py`: an exact snippet and a replacement that compiles but breaks the rule. A mutant that survives means the rule has no test.
+
 ## Dependencies
 
 Every dependency is code we trust to run inside every product, so the core module stays as close to the standard library as possible.

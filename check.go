@@ -371,7 +371,7 @@ func (w *Warden) customRoles(ctx context.Context, ids []string, cv *cacheVersion
 		toLoad = nil
 		for _, id := range missing {
 			var r *CustomRole
-			if b, ok, err := w.cache.Get(ctx, roleKey(id)); err == nil && ok && json.Unmarshal(b, &r) == nil && (r == nil || r.ID == id) {
+			if b, ok := w.cacheGet(ctx, roleKey(id)); ok && json.Unmarshal(b, &r) == nil && (r == nil || r.ID == id) {
 				out[id] = r
 				continue
 			}
@@ -392,7 +392,7 @@ func (w *Warden) customRoles(ctx context.Context, ids []string, cv *cacheVersion
 		if cv != nil {
 			for _, id := range toLoad {
 				if b, err := json.Marshal(out[id]); err == nil { // nil is cached too: "no such role"
-					_ = w.cache.Set(ctx, roleKey(id), b, w.cacheTTL)
+					w.cacheSet(ctx, roleKey(id), b)
 				}
 			}
 		}

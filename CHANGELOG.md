@@ -116,6 +116,27 @@ All notable changes to wardn are documented here. The format follows
   - SQL Server is not supported until a product needs it; products use
     PostgreSQL and MySQL (DESIGN.md D12).
 
+- Hardening (M7):
+  - Internal security review (docs/SECURITY_REVIEW.md): one high, four medium
+    and six low findings, all fixed with regression tests. **Security fixes:**
+    - Assigning or revoking a role now requires holding what it denies as well
+      as what it grants (F1, F1b: high).
+    - Cache entries are sealed with HMAC-SHA256. Shared caches require
+      `Config.CacheSecret` (FZ1, found by fuzzing).
+    - Cache invalidation after partial writes (F2). Audit never records an
+      abandoned change (F3). The sweeper no longer removes re-granted
+      assignments, using the new `Store.RevokeExpired` (F4).
+    - Management answers no longer reveal role existence (F5). Times outside
+      years 1–9999 are rejected (F6).
+    - Look-alike role names are folded together (F7). `Event.System`
+      replaces `SystemActor` (F8). At most 500 custom roles per scope (F9).
+    - Redis keys share a hash slot, for Redis Cluster.
+  - `HTTPStatus` maps management errors: 404 unknown role, 409 conflict,
+    taken name or role in use, 400 not assignable, 403 escalation.
+  - Fault injection on every store, cache and SQL write path; mutation
+    testing (`make mutation`, 46 security mutants); five new fuzz targets
+    and `make fuzz`; a weekly "Deep checks" CI workflow running both.
+
 ### Removed
 
 - CodeQL workflow, until the repository is public or GitHub Advanced

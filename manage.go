@@ -9,14 +9,10 @@ import (
 	"time"
 )
 
-// SystemActor is the actor recorded in audit events for changes made
-// through Warden.System, where no user is acting.
-const SystemActor = "system"
-
 // System performs management operations without the escalation guard, for
 // code that has no human actor: seeding the first administrator, data
 // migrations and background jobs. Calls to it should stand out in code
-// review. Every change is still audited, with SystemActor as the actor.
+// review. Every change is still audited, with Event.System set.
 type System struct {
 	w *Warden
 }
@@ -34,7 +30,9 @@ type actor struct {
 	guarded bool
 }
 
-var systemActor = actor{id: SystemActor}
+// systemActor makes unguarded changes; its events have System set and no
+// Actor, so they cannot be confused with a user whose ID is "system".
+var systemActor = actor{}
 
 func actorFrom(ctx context.Context) (actor, error) {
 	id, ok := UserOf(ctx)
@@ -292,16 +290,24 @@ func (w *Warden) assign(ctx context.Context, a actor, user, role string, scope S
 	for _, opt := range opts {
 		opt(&as)
 	}
+	for _, tm := range []time.Time{as.StartsAt, as.ExpiresAt} {
+		if !tm.IsZero() && (tm.Year() < 1 || tm.Year() > 9999) {
+			return invalidf("time %s is outside years 1 to 9999", tm.Format(time.RFC3339))
+		}
+	}
 	if !as.StartsAt.IsZero() && !as.ExpiresAt.IsZero() && !as.ExpiresAt.After(as.StartsAt) {
 		return invalidf("time window ends (%s) before it starts (%s)", as.ExpiresAt.Format(time.RFC3339), as.StartsAt.Format(time.RFC3339))
 	}
 	if !as.ExpiresAt.IsZero() && !as.ExpiresAt.After(w.clock.Now()) {
 		return invalidf("assignment would already be expired (%s)", as.ExpiresAt.Format(time.RFC3339))
 	}
-	if err := w.guard(ctx, a, scope, PermRolesAssign, r.compiled.allow); err != nil {
+	// A role's denies count too: assigning it restricts, revoking it lifts
+	// restrictions, and neither may reach beyond what the actor holds
+	// (security review F1).
+	if err := w.guard(ctx, a, scope, PermRolesAssign, r.compiled.allow, r.compiled.deny); err != nil {
 		return err
 	}
-	return w.change(ctx, Event{Type: EventAssigned, Actor: a.id, User: user, Role: role, Scope: scope, StartsAt: as.StartsAt, ExpiresAt: as.ExpiresAt},
+	return w.change(ctx, Event{Type: EventAssigned, Actor: a.id, System: !a.guarded, User: user, Role: role, Scope: scope, StartsAt: as.StartsAt, ExpiresAt: as.ExpiresAt},
 		func() error { return w.store.Assign(ctx, as) })
 }
 
@@ -318,22 +324,22 @@ func (w *Warden) revoke(ctx context.Context, a actor, user, role string, scope S
 	if err := w.guard(ctx, a, scope, PermRolesAssign); err != nil {
 		return err
 	}
-	var allow []string
+	var allow, deny []string
 	r, err := w.resolveRole(ctx, role)
 	var ue *UndefinedError
 	switch {
 	case err == nil:
-		allow = r.compiled.allow
+		allow, deny = r.compiled.allow, r.compiled.deny
 	case errors.Is(err, ErrRoleNotFound), errors.As(err, &ue):
 		// The role no longer exists, so it grants nothing: revoking the
 		// leftover assignment only needs wardn:roles.assign.
 	default:
 		return err
 	}
-	if err := w.guard(ctx, a, scope, PermRolesAssign, allow); err != nil {
+	if err := w.guard(ctx, a, scope, PermRolesAssign, allow, deny); err != nil {
 		return err
 	}
-	return w.change(ctx, Event{Type: EventRevoked, Actor: a.id, User: user, Role: role, Scope: scope},
+	return w.change(ctx, Event{Type: EventRevoked, Actor: a.id, System: !a.guarded, User: user, Role: role, Scope: scope},
 		func() error { return w.store.Revoke(ctx, user, role, scope) })
 }
 
@@ -357,7 +363,7 @@ func (w *Warden) createRole(ctx context.Context, a actor, owner Scope, spec Role
 	now := w.clock.Now()
 	r.Version, r.CreatedAt, r.UpdatedAt = 1, now, now
 	after := cloneRole(r)
-	err = w.change(ctx, Event{Type: EventRoleCreated, Actor: a.id, Role: r.ID, Scope: owner, After: &after},
+	err = w.change(ctx, Event{Type: EventRoleCreated, Actor: a.id, System: !a.guarded, Role: r.ID, Scope: owner, After: &after},
 		func() error { return w.store.CreateRole(ctx, r) })
 	if err != nil {
 		return CustomRole{}, err
@@ -366,7 +372,7 @@ func (w *Warden) createRole(ctx context.Context, a actor, owner Scope, spec Role
 }
 
 func (w *Warden) updateRole(ctx context.Context, a actor, id string, spec RoleSpec, version int) (CustomRole, error) {
-	old, err := w.loadCustomRole(ctx, id)
+	old, err := w.loadManagedRole(ctx, a, id)
 	if err != nil {
 		return CustomRole{}, err
 	}
@@ -384,7 +390,7 @@ func (w *Warden) updateRole(ctx context.Context, a actor, id string, spec RoleSp
 	}
 	r.ID, r.Version, r.CreatedAt, r.UpdatedAt = old.ID, old.Version+1, old.CreatedAt, w.clock.Now()
 	before, after := cloneRole(*old), cloneRole(r)
-	err = w.change(ctx, Event{Type: EventRoleUpdated, Actor: a.id, Role: id, Scope: old.Owner, Before: &before, After: &after},
+	err = w.change(ctx, Event{Type: EventRoleUpdated, Actor: a.id, System: !a.guarded, Role: id, Scope: old.Owner, Before: &before, After: &after},
 		func() error { return w.store.UpdateRole(ctx, r, version) })
 	if err != nil {
 		return CustomRole{}, err
@@ -397,9 +403,9 @@ func (w *Warden) deleteRole(ctx context.Context, a actor, id string, opts []Dele
 	for _, opt := range opts {
 		opt(&o)
 	}
-	old, err := w.loadCustomRole(ctx, id)
-	if errors.Is(err, ErrRoleNotFound) {
-		return nil // already gone
+	old, err := w.loadManagedRole(ctx, a, id)
+	if errors.Is(err, ErrRoleNotFound) && !a.guarded {
+		return nil // already gone; System() deletes are idempotent
 	}
 	if err != nil {
 		return err
@@ -415,7 +421,7 @@ func (w *Warden) deleteRole(ctx context.Context, a actor, id string, opts []Dele
 		return fmt.Errorf("%w: %q (%s); revoke its assignments first, or pass wardn.Cascade()", ErrRoleInUse, old.Name, id)
 	}
 	before := cloneRole(*old)
-	return w.change(ctx, Event{Type: EventRoleDeleted, Actor: a.id, Role: id, Scope: old.Owner, Before: &before}, func() error {
+	return w.change(ctx, Event{Type: EventRoleDeleted, Actor: a.id, System: !a.guarded, Role: id, Scope: old.Owner, Before: &before}, func() error {
 		// Delete the role first: from that moment its assignments grant
 		// nothing (rule 6), so a failure while revoking them is harmless.
 		if err := w.store.DeleteRole(ctx, id); err != nil {
@@ -426,6 +432,30 @@ func (w *Warden) deleteRole(ctx context.Context, a actor, id string, opts []Dele
 		}
 		return nil
 	})
+}
+
+// loadManagedRole loads a role for an update or deletion. For a guarded
+// actor it checks wardn:roles.manage at the role's owner before anything
+// else, and answers a denied actor exactly as if the role did not exist,
+// so nobody without that permission learns whether a role ID exists, its
+// version, or anything about it (security review F5).
+func (w *Warden) loadManagedRole(ctx context.Context, a actor, id string) (*CustomRole, error) {
+	notFound := fmt.Errorf("%w: %s", ErrRoleNotFound, id)
+	old, err := w.loadCustomRole(ctx, id)
+	if errors.Is(err, ErrRoleNotFound) {
+		return nil, notFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := w.guard(ctx, a, old.Owner, PermRolesManage); err != nil {
+		var denied *DeniedError
+		if errors.As(err, &denied) {
+			return nil, notFound
+		}
+		return nil, err
+	}
+	return old, nil
 }
 
 func (w *Warden) loadCustomRole(ctx context.Context, id string) (*CustomRole, error) {
@@ -505,6 +535,15 @@ func (w *Warden) checkRoleSpec(ctx context.Context, owner Scope, spec RoleSpec, 
 	if err != nil {
 		return CustomRole{}, err
 	}
+	if selfID == "" { // creating: bound the roles per owner (security review F9)
+		own, err := w.store.RolesOwnedBy(ctx, []Scope{owner})
+		if err != nil {
+			return CustomRole{}, fmt.Errorf("wardn: counting roles: %w", err)
+		}
+		if len(own) >= maxRolesPerOwner {
+			return CustomRole{}, invalidf("%s already has %d custom roles, the maximum", owner, maxRolesPerOwner)
+		}
+	}
 	visible, err := w.store.RolesOwnedBy(ctx, chain[1:])
 	if err != nil {
 		return CustomRole{}, fmt.Errorf("wardn: checking role names: %w", err)
@@ -572,10 +611,10 @@ func (w *Warden) Link(ctx context.Context, child, parent Scope) error {
 		return fmt.Errorf("%w: cannot link %s to %s; a %s's parent must be a %s",
 			ErrInvalidLink, child, parent, child.Type, want)
 	}
-	actorID := SystemActor
+	ev := Event{Type: EventLinked, System: true, Scope: child, Parent: parent}
 	if id, ok := UserOf(ctx); ok {
-		actorID = id
+		ev.Actor, ev.System = id, false
 	}
-	return w.change(ctx, Event{Type: EventLinked, Actor: actorID, Scope: child, Parent: parent},
+	return w.change(ctx, ev,
 		func() error { return w.store.Link(ctx, child, parent) })
 }

@@ -376,6 +376,24 @@ func testExpiry(t *testing.T, s wardn.Store) {
 	if err := s.MarkExpiryReported(ctx, nil); err != nil {
 		t.Fatalf("marking nothing: %v", err)
 	}
+
+	// RevokeExpired removes only the window it was given.
+	mustAssign(t, s, wardn.Assignment{User: "e", Role: "r", Scope: branch, ExpiresAt: t0})
+	if err := s.RevokeExpired(ctx, wardn.Assignment{User: "e", Role: "r", Scope: branch, ExpiresAt: t0.Add(-time.Second)}); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, s, "e", branch); len(got) != 1 {
+		t.Fatalf("RevokeExpired with another window removed the assignment: %+v", got)
+	}
+	if err := s.RevokeExpired(ctx, wardn.Assignment{User: "e", Role: "r", Scope: branch, ExpiresAt: t0}); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, s, "e", branch); len(got) != 0 {
+		t.Fatalf("RevokeExpired with the same window left it: %+v", got)
+	}
+	if err := s.RevokeExpired(ctx, wardn.Assignment{User: "nobody", Role: "r", Scope: branch, ExpiresAt: t0}); err != nil {
+		t.Fatalf("RevokeExpired of a missing assignment: %v", err)
+	}
 }
 
 func testRoleCanceledContext(t *testing.T, s wardn.Store) {
@@ -388,6 +406,7 @@ func testRoleCanceledContext(t *testing.T, s wardn.Store) {
 		"DeleteRole":         s.DeleteRole(ctx, "cr-c"),
 		"RevokeRole":         s.RevokeRole(ctx, "cr-c"),
 		"MarkExpiryReported": s.MarkExpiryReported(ctx, []wardn.Assignment{{User: "u", Role: "r", Scope: branch}}),
+		"RevokeExpired":      s.RevokeExpired(ctx, wardn.Assignment{User: "u", Role: "r", Scope: branch}),
 	}
 	_, checks["Roles"] = s.Roles(ctx, []string{"cr-c"})
 	_, checks["RolesOwnedBy"] = s.RolesOwnedBy(ctx, []wardn.Scope{org})

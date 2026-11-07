@@ -101,6 +101,11 @@ type AssignmentStore interface {
 	// reported. An assignment whose time window has changed since it was
 	// read (it was assigned again) must not be marked.
 	MarkExpiryReported(ctx context.Context, as []Assignment) error
+
+	// RevokeExpired deletes the assignment only if its ExpiresAt still
+	// equals a.ExpiresAt. If it was assigned again with a new window, it
+	// stays. The check and the deletion must be atomic.
+	RevokeExpired(ctx context.Context, a Assignment) error
 }
 
 // RoleStore persists custom roles.
@@ -365,6 +370,23 @@ func (m *MemoryStore) MarkExpiryReported(ctx context.Context, as []Assignment) e
 		ma := m.byUser[a.User][assignmentKey{role: a.Role, scope: a.Scope}]
 		if ma != nil && ma.a.ExpiresAt.Equal(a.ExpiresAt) {
 			ma.reported = true
+		}
+	}
+	return nil
+}
+
+// RevokeExpired implements Store.
+func (m *MemoryStore) RevokeExpired(ctx context.Context, a Assignment) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := assignmentKey{role: a.Role, scope: a.Scope}
+	if ma := m.byUser[a.User][key]; ma != nil && ma.a.ExpiresAt.Equal(a.ExpiresAt) {
+		delete(m.byUser[a.User], key)
+		if len(m.byUser[a.User]) == 0 {
+			delete(m.byUser, a.User)
 		}
 	}
 	return nil

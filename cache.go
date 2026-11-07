@@ -2,6 +2,8 @@ package wardn
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -107,11 +109,55 @@ func (w *Warden) versionsFor(ctx context.Context, chain []Scope) *cacheVersions 
 	return &cacheVersions{tenant: vs[0], global: vs[1], root: root}
 }
 
+// minCacheSecret is the minimum length of Config.CacheSecret.
+const minCacheSecret = 32
+
+// Every cached value is sealed with an HMAC over its key and its content,
+// so whoever can write to a shared cache still cannot forge an entry or
+// move one to another key (threat model T24). Values that fail
+// verification are misses.
+
+func (w *Warden) seal(key string, value []byte) []byte {
+	mac := hmac.New(sha256.New, w.cacheSecret)
+	mac.Write([]byte(key))
+	mac.Write([]byte{0})
+	mac.Write(value)
+	return append(mac.Sum(nil), value...)
+}
+
+func (w *Warden) unseal(key string, sealed []byte) ([]byte, bool) {
+	if len(sealed) < sha256.Size {
+		return nil, false
+	}
+	tag, value := sealed[:sha256.Size], sealed[sha256.Size:]
+	mac := hmac.New(sha256.New, w.cacheSecret)
+	mac.Write([]byte(key))
+	mac.Write([]byte{0})
+	mac.Write(value)
+	if !hmac.Equal(tag, mac.Sum(nil)) {
+		return nil, false
+	}
+	return value, true
+}
+
+// cacheGet returns the verified value under key.
+func (w *Warden) cacheGet(ctx context.Context, key string) ([]byte, bool) {
+	b, ok, err := w.cache.Get(ctx, key)
+	if err != nil || !ok {
+		return nil, false
+	}
+	return w.unseal(key, b)
+}
+
+func (w *Warden) cacheSet(ctx context.Context, key string, value []byte) {
+	_ = w.cache.Set(ctx, key, w.seal(key, value), w.cacheTTL)
+}
+
 // cached returns the value under key, or loads, stores and returns it. Any
-// cache failure, or a value that does not decode, falls back to load: the
-// cache can make wardn faster, never wrong.
+// cache failure, or a value that fails verification or does not decode,
+// falls back to load: the cache can make wardn faster, never wrong.
 func cached[T any](ctx context.Context, w *Warden, key string, load func() (T, error)) (T, error) {
-	if b, ok, err := w.cache.Get(ctx, key); err == nil && ok {
+	if b, ok := w.cacheGet(ctx, key); ok {
 		var v T
 		if json.Unmarshal(b, &v) == nil {
 			return v, nil
@@ -122,7 +168,7 @@ func cached[T any](ctx context.Context, w *Warden, key string, load func() (T, e
 		return v, err
 	}
 	if b, err := json.Marshal(v); err == nil {
-		_ = w.cache.Set(ctx, key, b, w.cacheTTL)
+		w.cacheSet(ctx, key, b)
 	}
 	return v, nil
 }
@@ -192,6 +238,26 @@ func (w *Warden) InvalidateCache(ctx context.Context, scopes ...Scope) error {
 		return fmt.Errorf("wardn: invalidating cache: %w", err)
 	}
 	return nil
+}
+
+// cacheSecretFor returns the secret that seals cache values.
+func cacheSecretFor(cache Cache, secret []byte) ([]byte, error) {
+	if len(secret) == 0 {
+		if _, private := cache.(*MemoryCache); private {
+			// Nobody outside this process can write to it: a random secret
+			// is enough.
+			b := make([]byte, minCacheSecret)
+			if _, err := rand.Read(b); err != nil {
+				return nil, fmt.Errorf("wardn: generating cache secret: %w", err)
+			}
+			return b, nil
+		}
+		return nil, errors.New("wardn: a shared Cache needs Config.CacheSecret: at least 32 random bytes, the same on every instance, so cache entries cannot be forged")
+	}
+	if len(secret) < minCacheSecret {
+		return nil, fmt.Errorf("wardn: Config.CacheSecret must be at least %d bytes", minCacheSecret)
+	}
+	return append([]byte(nil), secret...), nil
 }
 
 // MemoryCache is a Cache held in this process. It is correct only when a

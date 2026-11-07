@@ -112,6 +112,10 @@ Pushing the tag starts `.github/workflows/release.yml`. It:
 
 Anyone can verify a downloaded binary with `gh attestation verify <file> --repo MogRex-Limited/wardn`. Developers who install with `go install` are protected by the Go checksum database instead.
 
+### Deep checks
+
+`.github/workflows/deep.yml` runs a 5-minute-per-target fuzzing campaign and mutation testing every week. Treat a failure as a security issue: a fuzz crash uploads its input as an artifact. Commit that input under `testdata/fuzz/` with the fix, so it becomes a permanent regression test.
+
 ### Sub-modules
 
 `store/mongo` and `cache/redis` are separate Go modules, so their drivers reach only the teams that use them. Until the first release they build against the wardn in this repository through a `replace` directive, which Go ignores for downstream users. For each release:

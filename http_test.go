@@ -257,10 +257,44 @@ func TestHTTPStatus(t *testing.T) {
 		invalidf("x"):                 http.StatusBadRequest,
 		errStore:                      http.StatusInternalServerError,
 		&UndefinedError{Kind: "role"}: http.StatusInternalServerError,
+		ErrEscalation:                 http.StatusForbidden,
+		ErrNotAssignable:              http.StatusBadRequest,
+		ErrRoleNotFound:               http.StatusNotFound,
+		ErrConflict:                   http.StatusConflict,
+		ErrRoleNameTaken:              http.StatusConflict,
+		ErrRoleInUse:                  http.StatusConflict,
 		context.Canceled:              http.StatusInternalServerError,
 	} {
 		if got := HTTPStatus(err); got != want {
 			t.Errorf("HTTPStatus(%v) = %d, want %d", err, got, want)
 		}
+	}
+}
+
+// TestScopeFromAloneValidates: ScopeFrom rejects a bad ID itself, so a
+// handler that reads the scope from the context (wardn.ScopeOf) to load
+// tenant data never sees an invalid ID, with or without Require.
+func TestScopeFromAloneValidates(t *testing.T) {
+	w, _ := newBank(t)
+	var seen []Scope
+	h := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		s, _ := ScopeOf(r.Context())
+		seen = append(seen, s)
+		rw.WriteHeader(http.StatusNoContent)
+	})
+	mux := http.NewServeMux()
+	mux.Handle("GET /branches/{branchID}/report", w.ScopeFrom("branch", PathValue("branchID"))(h))
+	for path, want := range map[string]int{
+		"/branches/b1/report":          http.StatusNoContent,
+		"/branches/%20b1/report":       http.StatusBadRequest,
+		"/branches/b1%00/report":       http.StatusBadRequest,
+		"/branches/b%E2%80%AE1/report": http.StatusBadRequest,
+	} {
+		if rec := serve(t, mux, path); rec.Code != want {
+			t.Errorf("%s: status %d, want %d", path, rec.Code, want)
+		}
+	}
+	if len(seen) != 1 || seen[0] != branch1 {
+		t.Fatalf("handler saw scopes %v; only the valid one may reach it", seen)
 	}
 }

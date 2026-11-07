@@ -93,6 +93,9 @@ func newBank(t testing.TB, mod ...func(*Config)) (*Warden, *fakeClock) {
 	for _, m := range mod {
 		m(&cfg)
 	}
+	if cfg.Cache != nil && cfg.CacheSecret == nil {
+		cfg.CacheSecret = []byte("wardn test cache secret, 32+ bytes long")
+	}
 	w, err := New(cfg)
 	if err != nil {
 		t.Fatalf("New: %v", err)
