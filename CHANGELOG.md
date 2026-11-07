@@ -53,6 +53,24 @@ All notable changes to wardn are documented here. The format follows
     real PostgreSQL, MySQL and MariaDB (Docker locally with `make integration`,
     service containers in CI), with its own dependency allowlist.
 
+- HTTP and tooling (M4):
+  - `Require(perms...)` (all needed) and `RequireAny(perms...)` middleware for
+    net/http and chi, with no router dependency. Undefined permissions panic at
+    route registration. No user → 401, denied → 403, bad scope → 400, store
+    error → 500; the handler never runs on any of them.
+  - `ScopeFrom(scopeType, id)` with `PathValue(name)`, which works with chi
+    through Go's standard `r.PathValue`, so no chi adapter is needed.
+  - `Config.UserFrom` and `Config.OnError`; `DeniedError`, `ErrDenied`,
+    `ErrUnauthenticated`, `HTTPStatus`. Default error bodies are generic JSON
+    and reveal nothing.
+  - `wardntest.AuditRoutes`: fails a test for any route that doesn't answer 403
+    to a signed-in user with no roles (catches routes that forgot `Require`).
+  - `wardn` CLI: `check` validates a policy for CI; `gen` writes Go constants
+    for permissions, roles and scope constructors, and `gen -check` fails if
+    they are stale. Output failures make the command fail.
+  - Release workflow: signed-tag check, reproducible cross-platform CLI builds,
+    checksums and Sigstore build provenance.
+
 ### Removed
 
 - CodeQL workflow, until the repository is public or GitHub Advanced

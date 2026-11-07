@@ -394,15 +394,23 @@ r.Use(authMiddleware)                             // the product's auth; puts th
 r.With(w.Require("customer:view")).Get("/customers", listCustomers)
 
 r.Route("/orgs/{orgID}", func(r chi.Router) {
-    r.Use(w.ScopeFrom(wardnchi.Param("organisation", "orgID")))
+    r.Use(w.ScopeFrom("organisation", wardn.PathValue("orgID")))
     r.With(w.Require("loan:approve")).Post("/loans/{id}/approve", approveLoan)
+
+    r.Route("/branches/{branchID}", func(r chi.Router) {
+        r.Use(w.ScopeFrom("branch", wardn.PathValue("branchID"))) // the innermost scope wins
+        r.With(w.Require("loan:create")).Post("/loans", createLoan)
+    })
 })
 ```
 
-- No user → `401`. Denied → `403`. Store error → `500` (fail closed).
-- `Require` with an undefined permission **panics when the route is registered**, so a typo stops the application at boot, not when a customer hits the route.
-- The default `403` body does not reveal which permission was missing; the full `Decision` goes to `OnDecision`.
-- `RequireAny(perms...)` and `RequireAll(perms...)` are also available.
+- `Require(perms...)` needs **all** of the permissions; `RequireAny(perms...)` needs one.
+- No user → `401`. Denied → `403`. Missing or invalid scope ID → `400`. Store error → `500` (fail closed). The handler never runs on any of these.
+- `Require` with an undefined permission, and `ScopeFrom` with an undeclared scope type, **panic when the route is registered**, so a typo stops the application at boot, not when a customer hits the route.
+- Default error bodies are generic JSON (`{"error":"forbidden"}`), with `nosniff` and `no-store` headers. They don't reveal which permission was missing; the full `Decision` goes to `OnDecision`, and a custom `OnError` receives a `*DeniedError` carrying the decisions. `HTTPStatus(err)` maps any wardn error to its status code.
+- `wardn.PathValue(name)` reads a path parameter through Go's standard `r.PathValue`, which both net/http's `ServeMux` and chi (v5.1+) fill in. **wardn needs no chi adapter and no chi dependency.** `ScopeFrom` must sit where the parameter exists: with chi, inside `r.Route` or `r.With`, after routing. If it's placed too early, the ID is empty and every request gets `400`, never a silent fallback to Global.
+- Without `ScopeFrom`, a route checks at **Global**, where only global assignments apply (threat model T18). That is safe, but usually not what a tenant route wants.
+- Each request gets a per-request memo automatically, so several `Require` layers plus in-handler `Can` calls share one store read.
 
 Context helpers, for code outside HTTP handlers:
 
@@ -612,7 +620,7 @@ The full analysis, including attackers, trust boundaries, assumptions, and every
 
 | Threat | Mitigation |
 |---|---|
-| Forgotten check on a route | `Require` at the router; a future `wardn check` lint flags handlers without it |
+| Forgotten check on a route | `Require` at the router; `wardntest.AuditRoutes` requests every route as a user with no roles and fails for any route that doesn't answer 403 |
 | Typo silently denies or allows | Unknown permissions are errors; `Require` panics at boot; optional generated constants |
 | Cross-tenant access | Evaluation only considers assignments in the requested scope's own ancestor chain; custom roles are invisible outside their subtree; conformance tests cover isolation |
 | Privilege escalation via role management | Escalation guard (§6.2), on by default |
@@ -702,7 +710,12 @@ Generated code turns typos into compile errors:
 
 ```go
 r.With(w.Require(perm.LoanApprove)).Post(...)
-w.Assign(ctx, userID, perm.RoleTeller, scope.Branch("b7"))
+w.System().Assign(ctx, userID, perm.RoleTeller, perm.ScopeBranch("b7"))
+```
+
+`wardn gen` writes one package (default `perm`) holding the permissions (`perm.LoanApprove`), the built-in permissions (`perm.WardnRolesAssign`), the system roles (`perm.RoleTeller`) and a constructor per scope type (`perm.ScopeBranch(id)`). Two names that would become the same Go identifier are reported as an error. `wardn gen -check` fails in CI if the generated file is stale. Nothing in a policy file can inject code into the output: identifiers are built only from the characters policy names allow, values are quoted, and descriptions can't contain line breaks.
+
+```
 ```
 
 ### 13.3 Testing helpers: `wardntest`
@@ -715,6 +728,10 @@ req = wardntest.AsRoleIn(t, w, req, branch, "teller")
 uid := wardntest.NewUser(t, w, branch, "teller")    // a user ID for non-HTTP tests
 
 w := wardntest.AllowAll(t, "../wardn.yaml")         // everyone may do everything; typos still fail
+
+// Catch routes that forgot Require (threat model T17): every route must
+// answer 403 to a signed-in user with no roles.
+wardntest.AuditRoutes(t, router, authenticateAs, routes, publicRoutes...)
 
 clock := wardntest.NewClock(t0)                     // fake clock for time-limited access
 w := wardntest.New(t, "../wardn.yaml", wardntest.WithClock(clock))
@@ -748,7 +765,6 @@ github.com/MogRex-Limited/wardn            core: policy, evaluation, memory stor
 └── examples/                              runnable example products
 
 Separate modules (own go.mod):
-├── chi            (package wardnchi)      chi URL-param scope helpers
 ├── store/mongo                            MongoDB store
 └── cache          (package wardncache)    opt-in cross-request cache: in-memory, Redis
 ```
@@ -776,7 +792,7 @@ The security pipeline is built **before any feature code**, so every line of war
 | **M1: Secure foundation** | Go module, CI security gates (tests with race detector, golangci-lint with gosec, govulncheck, module verification, dependency allowlist), pre-push hook running the same gates locally, SHA-pinned actions, Dependabot, `SECURITY.md`, contribution rules, branch-protection and release process | Every gate runs and blocks on failure; repository settings applied |
 | **M2: Core engine** | Policy loading and validation, scopes and hierarchy, evaluation engine (all seven rules), `assignable_at`, time-limited assignments with injectable clock, per-request memoisation, memory store, `wardntest` | Every rule tested; property tests and fuzzing in place |
 | **M3: Storage** | SQL store (Postgres, MySQL, MariaDB, SQLite), conformance suite, versioned migrations, real-database CI | All adapters pass `storetest` in CI against real databases |
-| **M4: HTTP and tooling** | `Require` / `RequireAny` / `RequireAll`, chi helpers, error handling, `cmd/wardn check` and `gen` | Every HTTP path tested, including fail-closed behaviour |
+| **M4: HTTP and tooling** | `Require` / `RequireAny`, `ScopeFrom` with `PathValue` (works with chi, no adapter), error handling, `wardntest.AuditRoutes`, `cmd/wardn check` and `gen`, signed release workflow | Every HTTP path tested, including fail-closed behaviour |
 | **M5: Custom roles** | Runtime roles (grants-only), escalation guard, introspection APIs, audit hooks, expiry sweeper | Escalation and isolation test suites pass |
 | **M6: Completeness** | MongoDB store, opt-in cross-request cache (memory, Redis) | Mongo passes `storetest`; cache invalidation and expiry tests pass |
 | **M7: Hardening** | Adversarial suite, extended fuzzing campaign, mutation testing, internal security review, **independent external audit** | No open high or critical findings |

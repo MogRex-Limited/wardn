@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"time"
 )
@@ -41,6 +42,18 @@ type Config struct {
 	// Default: the system clock. Tests can inject a fake clock.
 	Clock Clock
 
+	// UserFrom, if set, returns the authenticated user's ID for a request.
+	// By default wardn's HTTP middleware reads it from the request context,
+	// where the application's authentication middleware put it with
+	// WithUser.
+	UserFrom func(r *http.Request) (userID string, ok bool)
+
+	// OnError, if set, writes the response when wardn's HTTP middleware
+	// rejects a request. Use HTTPStatus(err) for the status code. By default
+	// wardn writes a generic JSON error that does not reveal which
+	// permission was missing.
+	OnError func(w http.ResponseWriter, r *http.Request, err error)
+
 	// OnDecision, if set, is called with every authorization decision and
 	// any error, for audit logging and debugging. It must be fast and must
 	// not panic.
@@ -59,11 +72,13 @@ func (systemClock) Now() time.Time { return time.Now() }
 // Warden answers authorization questions for one policy. It is safe for
 // concurrent use; create one at startup and share it.
 type Warden struct {
-	policy     *compiledPolicy
-	store      Store
-	parentOf   func(context.Context, Scope) (Scope, bool, error)
-	clock      Clock
-	onDecision func(context.Context, Decision, error)
+	policy       *compiledPolicy
+	store        Store
+	parentOf     func(context.Context, Scope) (Scope, bool, error)
+	clock        Clock
+	onDecision   func(context.Context, Decision, error)
+	userFrom     func(*http.Request) (string, bool)
+	errorHandler func(http.ResponseWriter, *http.Request, error)
 }
 
 // New validates the policy and returns a Warden. Any problem in the policy
@@ -90,11 +105,13 @@ func New(cfg Config) (*Warden, error) {
 		return nil, err
 	}
 	w := &Warden{
-		policy:     cp,
-		store:      cfg.Store,
-		parentOf:   cfg.ParentOf,
-		clock:      cfg.Clock,
-		onDecision: cfg.OnDecision,
+		policy:       cp,
+		store:        cfg.Store,
+		parentOf:     cfg.ParentOf,
+		clock:        cfg.Clock,
+		onDecision:   cfg.OnDecision,
+		userFrom:     cfg.UserFrom,
+		errorHandler: cfg.OnError,
 	}
 	if w.store == nil {
 		w.store = NewMemoryStore()
