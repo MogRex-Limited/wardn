@@ -1,0 +1,9 @@
+# Direct dependencies wardn's root module is allowed to require.
+#
+# Every entry needs a justification. Adding a line requires maintainer
+# approval in review (see CONTRIBUTING.md, "Dependencies"). CI fails if
+# go.mod requires a direct dependency that is not listed here.
+#
+# Format: <module path>  # <why it is needed>
+
+go.yaml.in/yaml/v3  # Policy file parsing (M2). Maintained successor of the archived gopkg.in/yaml.v3.

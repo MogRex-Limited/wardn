@@ -1,0 +1,25 @@
+# Dependabot proposes updates; a maintainer reviews every one. Nothing is
+# auto-merged (threat model S01).
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    # Wait a week before proposing a new release, so a freshly published
+    # malicious version has time to be detected and pulled.
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+    labels: [dependencies, ci]
