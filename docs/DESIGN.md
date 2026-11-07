@@ -119,7 +119,8 @@ report:export
 | Pattern | Matches |
 |---|---|
 | `*` | every permission |
-| `loan:*` | every permission whose resource is `loan` |
+| `loan:*` | every permission whose resource is `loan` (`loan:create`, `loan:approve:own`), but not `loans:…` |
+| `loan:approve:*` | any deeper prefix works the same way |
 
 ### 4.2 Role
 
@@ -207,7 +208,7 @@ These rules are fixed. They are not configurable, so they mean the same thing in
 3. **Allows accumulate.** A user's effective permissions are the union of all their applicable roles.
 4. **Deny wins.** If any applicable role denies a permission, the answer is no, regardless of any allow.
 5. **Fail closed.** If the store returns an error, the answer is no and the error is reported.
-6. **Unknown references are ignored safely.** An assignment that points to a role that no longer exists grants nothing.
+6. **Unknown references are ignored safely.** An assignment that points to a role that no longer exists grants nothing. Likewise, if the policy is changed so a role is no longer assignable at a scope type, existing assignments of it there stop applying.
 7. **Time windows are enforced at check time.** An assignment applies only when `starts_at ≤ now < expires_at`, with null bounds meaning "no limit". Correctness never depends on a cleanup job: an expired assignment stops working at the exact moment it expires, even if nothing has deleted it.
 
 ### 5.1 Algorithm
@@ -320,7 +321,7 @@ w, err := wardn.New(wardn.Config{
 | `Store` | Storage adapter | in-memory |
 | `ParentOf` | Resolve scope parents from the product's own data (§8) | stored links |
 | `UserFrom` | Extract the user ID from a request | read from context |
-| `OnDecision` | Called on every check (audit/logging) | none |
+| `OnDecision` | Called with every decision and any error, `func(ctx, Decision, error)` (audit/logging) | none |
 | `OnChange` | Called on every management change (audit trail) | none |
 | `OnError` | Custom HTTP error responses | JSON `401` / `403` / `500` |
 | `Clock` | Source of "now" for time windows; tests inject a fake clock | system clock |
@@ -334,7 +335,7 @@ w, err := wardn.New(wardn.Config{
 ok := w.Can(ctx, userID, "loan:approve", branch)            // bool; false on any error
 
 d, err := w.Check(ctx, userID, "loan:approve", branch)      // full Decision
-// d.Allowed, d.Reason, d.Role, d.GrantedAt (scope), d.Permission
+// d.Allowed, d.Reason, d.Role, d.At (scope where the role is assigned), d.Rule, d.Permission
 
 w.CanAny(ctx, userID, branch, "loan:approve", "loan:view")
 w.CanAll(ctx, userID, branch, "loan:approve", "loan:view")
@@ -367,6 +368,8 @@ w.DeleteRole(ctx, roleID, wardn.Cascade)
 
 w.System().Assign(...)                // unguarded, for seeding and jobs (§6.3)
 ```
+
+The guarded `w.Assign` and `w.Revoke` arrive with the escalation guard in M5. Until then only `w.System()` exists, so no call ever *looks* guarded without being guarded.
 
 Assign and Revoke are idempotent. Assign also checks that the role may be used in that scope: the scope's type must be in the role's `assignable_at`, and a custom role may only be assigned within its owning scope's subtree.
 
@@ -490,7 +493,9 @@ roles:                           # system roles
   teller: [customer:view, loan:create]     # shorthand: a list is an allow list
 ```
 
-Validation at startup rejects: unknown keys, undefined permissions or scope types referenced by roles, wildcards that match nothing, cycles in the scope tree, invalid names, and duplicate definitions. Every error includes the file, the line, and a suggestion where one exists.
+Validation at startup rejects: unknown keys, undefined permissions or scope types referenced by roles, permissions without a description, wildcards that match nothing, a permission both allowed and denied by one role, cycles in the scope tree, invalid names, and duplicate definitions. It also rejects YAML anchors, aliases and merge keys (they make files hard to review and enable resource-exhaustion attacks), files over 1 MiB, and more than one document. `version` is optional and defaults to 1. **Every problem is reported at once**, each with the file, the line, and a suggestion where one exists.
+
+A role may contain only denies, which is useful for a `suspended` role that blocks everything wherever it is assigned.
 
 The same structure can be built in Go (`wardn.Policy{...}`) for teams that prefer code. YAML is the recommended default.
 
@@ -512,7 +517,7 @@ type Store interface {
 
 type AssignmentStore interface {
     Assign(ctx context.Context, a Assignment) error                         // idempotent upsert (replaces time window)
-    Revoke(ctx context.Context, a Assignment) error                         // idempotent
+    Revoke(ctx context.Context, user, role string, scope Scope) error       // idempotent
     Assignments(ctx context.Context, user string, in []Scope) ([]Assignment, error)
     Members(ctx context.Context, scope Scope, page Page) ([]Assignment, string, error)
     ExpiredUnreported(ctx context.Context, before time.Time, limit int) ([]Assignment, error)
@@ -521,10 +526,10 @@ type AssignmentStore interface {
 
 type Assignment struct {
     User      string
-    RoleID    string
+    Role      string       // system role name or custom role ID
     Scope     Scope
-    StartsAt  *time.Time   // nil = no lower bound
-    ExpiresAt *time.Time   // nil = never expires
+    StartsAt  time.Time    // zero = no lower bound
+    ExpiresAt time.Time    // zero = never expires; the window is [StartsAt, ExpiresAt)
 }
 
 type RoleStore interface {
@@ -552,7 +557,7 @@ Design choices that keep adapters simple:
 
 | Package | Databases | Go module |
 |---|---|---|
-| `wardn/store/memory` | In-process (tests, demos) | core |
+| `wardn.NewMemoryStore()` | In-process (tests, demos); the default when no store is configured | core package (it is the default, so it cannot live in a sub-package that imports the core) |
 | `wardn/store/sql` | PostgreSQL, MySQL/MariaDB, SQLite, SQL Server — through `database/sql`; the product brings its own driver | core (no driver dependency) |
 | `wardn/store/mongo` | MongoDB | separate module |
 
@@ -697,7 +702,9 @@ w := wardntest.New(t, "../wardn.yaml")              // real policy, in-memory st
 req = wardntest.AsRole(t, w, req, "teller")         // request from a user holding "teller"
 req = wardntest.AsRoleIn(t, w, req, branch, "teller")
 
-w := wardntest.AllowAll(t)                          // when authorization isn't what's being tested
+uid := wardntest.NewUser(t, w, branch, "teller")    // a user ID for non-HTTP tests
+
+w := wardntest.AllowAll(t, "../wardn.yaml")         // everyone may do everything; typos still fail
 
 clock := wardntest.NewClock(t0)                     // fake clock for time-limited access
 w := wardntest.New(t, "../wardn.yaml", wardntest.WithClock(clock))
@@ -723,8 +730,7 @@ This is tested formally before the announcement (M8): a developer who has never 
 ## 14. Package layout
 
 ```
-github.com/MogRex-Limited/wardn            core: policy, evaluation, HTTP middleware, context
-├── store/memory                           in-memory store
+github.com/MogRex-Limited/wardn            core: policy, evaluation, memory store, HTTP middleware, context
 ├── store/sql                              database/sql store
 ├── storetest                              store conformance suite
 ├── wardntest                              testing helpers
