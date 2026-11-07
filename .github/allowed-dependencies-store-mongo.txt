@@ -1,0 +1,7 @@
+# Direct dependencies of the MongoDB store module (store/mongo).
+# Users who choose this store download these; everyone else never does.
+#
+# Format: <module path>  # <why it is needed>
+
+github.com/MogRex-Limited/wardn   # The core library (replaced with ../.. until the first release).
+go.mongodb.org/mongo-driver/v2    # The official MongoDB driver for Go, maintained by MongoDB Inc.

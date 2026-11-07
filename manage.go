@@ -178,7 +178,7 @@ func (w *Warden) resolveRole(ctx context.Context, role string) (*resolvedRole, e
 		if err := validateID("role", role); err != nil {
 			return nil, invalidf("%v", err)
 		}
-		roles, err := w.customRoles(ctx, []string{role})
+		roles, err := w.customRoles(ctx, []string{role}, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -433,7 +433,7 @@ func (w *Warden) loadCustomRole(ctx context.Context, id string) (*CustomRole, er
 		return nil, fmt.Errorf("%w: %q is not a custom role ID", ErrRoleNotFound, id)
 	}
 	w.memoFrom(ctx).forget() // management reads the latest version
-	roles, err := w.customRoles(ctx, []string{id})
+	roles, err := w.customRoles(ctx, []string{id}, nil)
 	if err != nil {
 		return nil, err
 	}

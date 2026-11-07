@@ -10,15 +10,15 @@ import (
 
 // RoleInfo describes a role for admin screens.
 type RoleInfo struct {
-	ID           string // system role name, or custom role ID
-	Name         string // display name (the system role name for system roles)
-	Description  string
-	Allow        []string
-	Deny         []string // system roles only
-	AssignableAt []string // empty: anywhere
-	Custom       bool
-	Owner        Scope // custom roles only
-	Version      int   // custom roles only
+	ID           string   `json:"id"`   // system role name, or custom role ID
+	Name         string   `json:"name"` // display name (the system role name for system roles)
+	Description  string   `json:"description"`
+	Allow        []string `json:"allow"`
+	Deny         []string `json:"deny,omitempty"`          // system roles only
+	AssignableAt []string `json:"assignable_at,omitempty"` // empty: anywhere
+	Custom       bool     `json:"custom"`
+	Owner        Scope    `json:"owner,omitzero"`   // custom roles only
+	Version      int      `json:"version,omitzero"` // custom roles only
 }
 
 // Roles returns the roles that can be assigned at scope: system roles whose
@@ -171,8 +171,21 @@ func (w *Warden) SweepExpired(ctx context.Context, opts ...SweepOption) (int, er
 		}
 		if o.remove {
 			for _, a := range batch {
+				// Removing an expired assignment changes no decision, but it
+				// changes cached data, so it goes through the same path as
+				// any other change (minus the audit event, already sent).
+				ev := Event{Type: EventExpired, Scope: a.Scope}
+				counters, err := w.countersFor(ctx, ev)
+				if err != nil {
+					return total, err
+				}
 				if err := w.store.Revoke(ctx, a.User, a.Role, a.Scope); err != nil {
 					return total, fmt.Errorf("wardn: removing expired assignment: %w", err)
+				}
+				if len(counters) > 0 {
+					if err := w.cache.Incr(ctx, counters); err != nil {
+						return total, fmt.Errorf("%w: %w", ErrCacheInvalidation, err)
+					}
 				}
 			}
 		}

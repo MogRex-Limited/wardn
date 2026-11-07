@@ -581,8 +581,8 @@ Design choices that keep adapters simple:
 |---|---|---|
 | `wardn.NewMemoryStore()` | In-process (tests, demos); the default when no store is configured | core package (it is the default, so it cannot live in a sub-package that imports the core) |
 | `wardn/store/sql` (package `wardnsql`) | PostgreSQL 13+, MySQL 8.0+, MariaDB 10.6+, SQLite 3.24+, through `database/sql`; the product brings its own driver, and the dialect is detected from it | core (no driver dependency) |
-| SQL Server | Planned for M6 (completeness). Its upsert, placeholder and DDL syntax differ enough to need its own dialect and CI database. | core |
-| `wardn/store/mongo` | MongoDB | separate module |
+| SQL Server | **Not supported** (D12): no product uses it. If one ever does, it needs SQL Server 2019+ (UTF-8 binary collations, for exact ID comparison with index use) and a key design within the 900-byte key limit. | core |
+| `wardn/store/mongo` (package `wardnmongo`) | MongoDB 6.0+, standalone or replica set; needs no transactions (every write is one document) | separate module |
 
 Separate Go modules mean a SQL user never downloads the MongoDB driver and vice versa. The core module depends only on the standard library and a YAML parser.
 
@@ -703,14 +703,19 @@ In banking, a stale permission is a security bug: a revocation must take effect 
 
 ```go
 wardn.Config{
-    Cache: wardncache.Redis(rdb, wardncache.TTL(5*time.Second)),   // or wardncache.Memory(...)
+    Cache:    wardnredis.MustNew(rdb, "lending-app"), // shared by every instance; or wardn.NewMemoryCache() for one instance
+    CacheTTL: 5 * time.Second,                      // the default; at most 5 minutes
 }
 ```
 
-- It sits behind a `Cache` interface. Official implementations are in-memory (single instance) and Redis (multi-instance).
-- **Version counters for invalidation.** Each root scope (tenant) and the global scope has a version counter in the cache backend. Every change (assign, revoke, role edit, link) bumps the counter of the affected tenant, or of global for global changes. Cache keys include the current counters, so one increment invalidates everything for that tenant across every instance, without a "delete by pattern".
-- **TTL is short** by default and acts as a safety net if an invalidation is ever missed. An example is a change made directly in the database, bypassing wardn.
-- **Expiry-aware.** An entry never lives past the earliest `starts_at` or `expires_at` among the assignments it was computed from, so time-limited access begins and ends on time even when cached.
+- **It caches data, never decisions.** wardn caches what it reads from the store (a user's assignments for a scope, scope parents, custom roles) and still evaluates every check, against the clock. A cached time-limited assignment therefore starts and ends at exactly the right moment, however long it stays in the cache. This is simpler and stronger than limiting entry lifetimes to the nearest expiry, which was the original plan.
+- **Version counters for invalidation.** There is one counter per tenant (top-level scope), one for Global, and one for scope links. Cache keys include the counters they depend on, so one increment makes every entry for that tenant unreachable on every instance, with no "delete by pattern".
+- **Invalidation before and after every change.** Assign, revoke, role edits and deletions, links, and removal of expired assignments increment the affected counters *before* writing, and abort if that fails, so nothing changes without invalidation. They increment again *after* writing, so an entry that a concurrent reader cached from the old data in between is never reachable. If only the second increment fails, the change is saved and `ErrCacheInvalidation` is returned (retrying is safe). Moving a scope invalidates both its old and its new tenant.
+- **A failing cache never makes wardn wrong.** Cache read errors, and values that don't decode, fall back to the store. Everything read from the cache is validated exactly like store data.
+- **Keys are hashes** (SHA-256 of structured parts), so IDs, which may be personal data, never appear in the cache, and separators can't be injected.
+- **The TTL is only a safety net**, for changes wardn can't see: edits made directly in the database, or scope moves when `Config.ParentOf` reads parents from the product's own data. After such changes, call `w.InvalidateCache(ctx, scopes...)`.
+- **`wardn.NewMemoryCache()` is correct only for a single instance**, because other instances can't see its counters. With more than one instance, use the shared Redis cache (`wardn/cache/redis`, which works with Redis and Valkey). It needs a namespace per application and a private server (threat model T24).
+- Any cache implementation must pass the `cachetest` conformance suite, which includes atomic counters under concurrent increments.
 
 Benchmarks ship with the library. Performance targets will be set by measuring the reference applications (M8) against realistic data sizes, not guessed.
 
@@ -788,13 +793,16 @@ This is tested formally before the announcement (M8): a developer who has never 
 github.com/MogRex-Limited/wardn            core: policy, evaluation, memory store, HTTP middleware, context
 ├── store/sql      (package wardnsql)      database/sql store
 ├── storetest                              store conformance suite
+├── cachetest                              cache conformance suite
 ├── wardntest                              testing helpers
 ├── cmd/wardn                              CLI: check, gen
 └── examples/                              runnable example products
 
 Separate modules (own go.mod):
-├── store/mongo                            MongoDB store
-└── cache          (package wardncache)    opt-in cross-request cache: in-memory, Redis
+├── store/mongo    (package wardnmongo)    MongoDB store
+└── cache/redis    (package wardnredis)    shared cross-request cache (Redis, Valkey)
+
+The in-memory cache (`wardn.NewMemoryCache`) lives in the core, like the memory store.
 ```
 
 Future optional modules, each added only after a real product needs it:
@@ -822,7 +830,7 @@ The security pipeline is built **before any feature code**, so every line of war
 | **M3: Storage** | SQL store (Postgres, MySQL, MariaDB, SQLite), conformance suite, versioned migrations, real-database CI | All adapters pass `storetest` in CI against real databases |
 | **M4: HTTP and tooling** | `Require` / `RequireAny`, `ScopeFrom` with `PathValue` (works with chi, no adapter), error handling, `wardntest.AuditRoutes`, `cmd/wardn check` and `gen`, signed release workflow | Every HTTP path tested, including fail-closed behaviour |
 | **M5: Custom roles** | Runtime roles (grants-only) with spoof-resistant names, escalation guard, guarded `Assign`/`Revoke`, introspection APIs (`Roles`, `AssignableRoles`, `Members`, `CustomRole`), audit events (`OnChange`), expiry sweeper, schema v2 | Escalation and isolation test suites pass |
-| **M6: Completeness** | MongoDB store, opt-in cross-request cache (memory, Redis) | Mongo passes `storetest`; cache invalidation and expiry tests pass |
+| **M6: Completeness** | MongoDB store, opt-in cross-request cache (memory, Redis) with version-counter invalidation, cache conformance suite, stable JSON for public types; SQL Server deferred until a product needs it (D12) | Mongo passes `storetest`; Redis passes `cachetest`; no stale answer after random changes across instances |
 | **M7: Hardening** | Adversarial suite, extended fuzzing campaign, mutation testing, internal security review, **independent external audit** | No open high or critical findings |
 | **M8: Proof and documentation** | Reference applications (multi-branch bank, multi-tenant SaaS, flat app, school system), quick start, concepts, recipes, API reference; fresh-developer usability test; benchmarks | All four reference apps built cleanly on the public API; usability test passes unaided |
 | **M9: v1.0 announcement** | Stability guarantee, release, internal announcement | Becomes the standard for new products |
@@ -867,6 +875,8 @@ These numbers form the basis of the internal case and, later, the public story.
 | D8 | Supported Go versions | The two most recent Go releases, matching Go's own security-support policy (currently 1.26 and 1.27). | Older Go releases no longer receive security fixes. |
 | D9 | Custom role names | One script, no invisible characters or combining marks, uniqueness ignoring case, spacing, `_` and `-`, checked against system roles and ancestors' roles. | Role names are chosen by admins and read by other admins; anything that lets two names look alike enables T15. Combining marks are refused because the standard library cannot normalise Unicode; precomposed letters (é, Ọ) work. Adopting `golang.org/x/text` normalisation later would relax this. |
 | D10 | Audit timing | `OnChange` runs *before* the write and can veto it; if the write then fails, it is called again with `Event.Err` set. | Fail closed: nothing changes without a record. The follow-up call keeps the trail accurate when a store write fails. |
+| D11 | What the cache holds | Store data (assignments, parents, custom roles), never decisions; version counters bumped before and after every change. | Decisions depend on the clock; data doesn't. Caching data keeps time windows exact without any expiry arithmetic, and keeps one evaluation path, cached or not. |
+| D12 | SQL Server | Not supported until a product needs it. The organisation's products use PostgreSQL and MySQL, which are fully supported and tested (with MariaDB and SQLite). | Untested database support is a liability in a security library. Doing SQL Server correctly needs 2019+ binary UTF-8 collations and a new key design; that work is justified only by a real user. |
 
 ## 18. Open questions
 

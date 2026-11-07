@@ -14,35 +14,35 @@ import (
 // belongs to an owner scope and applies only within that scope's subtree.
 // Custom roles only grant; they cannot deny (design decision D2).
 type CustomRole struct {
-	ID          string // generated; starts with "cr-", so it never clashes with a system role name
-	Owner       Scope  // where the role was created
-	Name        string // display name, unique within the owner scope and its ancestors
-	NameKey     string // normalised name used for uniqueness; set by wardn
-	Description string
+	ID          string `json:"id"`          // generated; starts with "cr-", so it never clashes with a system role name
+	Owner       Scope  `json:"owner"`       // where the role was created
+	Name        string `json:"name"`        // display name, unique within the owner scope and its ancestors
+	NameKey     string `json:"name_key"`    // normalised name used for uniqueness; set by wardn
+	Description string `json:"description"` //
 
 	// Allow lists the permissions the role grants: concrete permissions or
 	// wildcards from the catalog.
-	Allow []string
+	Allow []string `json:"allow"`
 
 	// AssignableAt lists the scope types where the role may be assigned:
 	// the owner's type and types below it. Default: the owner's type.
-	AssignableAt []string
+	AssignableAt []string `json:"assignable_at"`
 
-	Version   int // incremented on every update; used to detect conflicting edits
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	Version   int       `json:"version"` // incremented on every update; used to detect conflicting edits
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // RoleSpec describes a custom role to create or the new content of one to
 // update.
 type RoleSpec struct {
-	Name         string
-	Description  string
-	Allow        []string
-	AssignableAt []string // default: the owner scope's type
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	Allow        []string `json:"allow"`
+	AssignableAt []string `json:"assignable_at,omitempty"` // default: the owner scope's type
 	// Deny is not supported for custom roles in this release: a RoleSpec
 	// with Deny entries is rejected (design decision D2).
-	Deny []string
+	Deny []string `json:"deny,omitempty"`
 }
 
 const customRolePrefix = "cr-"

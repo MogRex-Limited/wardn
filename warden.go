@@ -34,6 +34,17 @@ type Config struct {
 	// from authoritative data; returning ok=false means "no parent".
 	ParentOf func(ctx context.Context, child Scope) (parent Scope, ok bool, err error)
 
+	// Cache, if set, caches store reads across requests (see Cache). Off
+	// by default: without it every request reads the store, so a change is
+	// visible on the very next request. Use a shared cache when running
+	// more than one instance.
+	Cache Cache
+
+	// CacheTTL is how long cache entries live (default 5s, at most 5m). It
+	// only matters for changes made behind wardn's back; wardn's own
+	// changes invalidate the cache immediately.
+	CacheTTL time.Duration
+
 	// ManualMigrations stops New from migrating the Store's database
 	// schema. Set it if your deploy pipeline runs migrations itself.
 	ManualMigrations bool
@@ -85,6 +96,8 @@ type Warden struct {
 	onDecision   func(context.Context, Decision, error)
 	userFrom     func(*http.Request) (string, bool)
 	onChange     func(context.Context, Event) error
+	cache        Cache
+	cacheTTL     time.Duration
 	errorHandler func(http.ResponseWriter, *http.Request, error)
 }
 
@@ -119,6 +132,8 @@ func New(cfg Config) (*Warden, error) {
 		onDecision:   cfg.OnDecision,
 		userFrom:     cfg.UserFrom,
 		onChange:     cfg.OnChange,
+		cache:        cfg.Cache,
+		cacheTTL:     cfg.CacheTTL,
 		errorHandler: cfg.OnError,
 	}
 	if w.store == nil {
@@ -126,6 +141,12 @@ func New(cfg Config) (*Warden, error) {
 	}
 	if w.clock == nil {
 		w.clock = systemClock{}
+	}
+	switch {
+	case w.cacheTTL < 0 || w.cacheTTL > maxCacheTTL:
+		return nil, fmt.Errorf("wardn: CacheTTL must be between 0 and %s", maxCacheTTL)
+	case w.cacheTTL == 0:
+		w.cacheTTL = DefaultCacheTTL
 	}
 	if m, ok := w.store.(Migrator); ok && !cfg.ManualMigrations {
 		ctx, cancel := context.WithTimeout(context.Background(), migrationTimeout)
@@ -149,8 +170,8 @@ func MustNew(cfg Config) *Warden {
 
 // Permission is an entry in the permission catalog.
 type Permission struct {
-	Name        string
-	Description string
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
 // Catalog returns every permission in the policy, including the built-in

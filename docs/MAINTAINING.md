@@ -21,7 +21,7 @@ Some protections in the [threat model](THREAT_MODEL.md) (S02–S05) cannot be en
   - [ ] Require approval of the most recent push (no self-approving after a reviewer's approval)
   - [ ] Require conversation resolution before merging
 - [ ] Require status checks to pass, with branches up to date:
-  - `Test (Go 1.26.x)`, `Test (Go 1.27.x)`, `Lint`, `Supply chain`, `Integration (real databases)`
+  - `Test (Go 1.26.x)`, `Test (Go 1.27.x)`, `Lint (.)`, `Lint (store/mongo)`, `Lint (cache/redis)`, `Lint (tests/integration)`, `Supply chain`, `Integration (real databases)`
   - add `Analyze (Go)` when CodeQL is restored (see "CodeQL" below)
 - [ ] Require signed commits
 - [ ] Require linear history
@@ -55,7 +55,7 @@ Update the pinned action SHAs before re-enabling it.
 
 ### Database images
 
-The integration databases are pinned by digest in two places that must match: `tests/integration/compose.yaml` and the `integration` job in `.github/workflows/ci.yml`. Dependabot does not update them. Refresh them deliberately, at least once per milestone:
+The integration servers (PostgreSQL, MySQL, MariaDB, MongoDB, Redis) are pinned by digest in two places that must match: `tests/integration/compose.yaml` and the `integration` job in `.github/workflows/ci.yml`. Dependabot does not update them. Refresh them deliberately, at least once per milestone:
 
 ```bash
 docker pull postgres:17-alpine && docker image inspect --format '{{index .RepoDigests 0}}' postgres:17-alpine
@@ -111,6 +111,18 @@ Pushing the tag starts `.github/workflows/release.yml`. It:
 5. creates the GitHub release.
 
 Anyone can verify a downloaded binary with `gh attestation verify <file> --repo MogRex-Limited/wardn`. Developers who install with `go install` are protected by the Go checksum database instead.
+
+### Sub-modules
+
+`store/mongo` and `cache/redis` are separate Go modules, so their drivers reach only the teams that use them. Until the first release they build against the wardn in this repository through a `replace` directive, which Go ignores for downstream users. For each release:
+
+1. Tag the core first (`v0.x.y`).
+2. In each sub-module, drop the `replace` line, require that core version, and tidy.
+3. Tag each sub-module with its path: `store/mongo/v0.x.y` and `cache/redis/v0.x.y`.
+
+### Known advisories
+
+- **GO-2026-5932** (`golang.org/x/crypto/openpgp`, deprecated and unsafe by design) is reported for `store/mongo`'s dependency graph. No package in the graph imports `openpgp` (`go list -deps ./... | grep openpgp` is empty), and its fix exists only as an untagged snapshot. Move `golang.org/x/crypto` to the first tagged release that contains the fix, then remove this note.
 
 ### Versioning
 
