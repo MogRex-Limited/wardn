@@ -20,6 +20,13 @@ make check
 
 Don't bypass the hook with `git push --no-verify`.
 
+`make check` tests the SQL store on SQLite. To test it on PostgreSQL, MySQL and MariaDB as CI does, run this (it needs Docker):
+
+```bash
+make integration   # starts the databases and runs the store tests on all of them
+make db-down       # stops them
+```
+
 This runs formatting and lint (including security linters), tests with the race detector, the dependency allowlist check, module verification and `govulncheck`. A pull request cannot merge unless all of them pass.
 
 Requirements: Go 1.26 or newer, plus `make`. The pinned linter and vulnerability scanner are fetched automatically.

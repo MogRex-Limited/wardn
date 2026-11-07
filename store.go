@@ -36,8 +36,12 @@ func (a Assignment) activeAt(t time.Time) bool {
 // authorization logic (inheritance, wildcards, deny-wins, time windows), so
 // a Store only saves and loads records.
 //
-// Implementations must be safe for concurrent use. Every method must either
-// succeed completely or return an error; wardn treats any error as "deny".
+// Implementations must be safe for concurrent use, must honour context
+// cancellation, and must compare IDs exactly, byte for byte (no case- or
+// accent-insensitive matching). Every method must either succeed completely
+// or return an error; wardn treats any error as "deny". Stores may round
+// times to a coarser precision, but never in a direction that widens a time
+// window. The storetest package checks all of this.
 type Store interface {
 	// Assign saves an assignment. There is at most one assignment per
 	// (user, role, scope): assigning again replaces the time window.
@@ -58,6 +62,12 @@ type Store interface {
 
 	// Parent returns child's parent, and false if none is recorded.
 	Parent(ctx context.Context, child Scope) (Scope, bool, error)
+}
+
+// Migrator is implemented by stores that manage their own database schema.
+// New calls Migrate at startup unless Config.ManualMigrations is set.
+type Migrator interface {
+	Migrate(ctx context.Context) error
 }
 
 // MemoryStore is a Store that keeps everything in memory. Its contents are
@@ -83,7 +93,10 @@ func NewMemoryStore() *MemoryStore {
 }
 
 // Assign implements Store.
-func (m *MemoryStore) Assign(_ context.Context, a Assignment) error {
+func (m *MemoryStore) Assign(ctx context.Context, a Assignment) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	user := m.byUser[a.User]
@@ -96,7 +109,10 @@ func (m *MemoryStore) Assign(_ context.Context, a Assignment) error {
 }
 
 // Revoke implements Store.
-func (m *MemoryStore) Revoke(_ context.Context, user, role string, scope Scope) error {
+func (m *MemoryStore) Revoke(ctx context.Context, user, role string, scope Scope) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.byUser[user], assignmentKey{role: role, scope: scope})
@@ -107,7 +123,10 @@ func (m *MemoryStore) Revoke(_ context.Context, user, role string, scope Scope) 
 }
 
 // Assignments implements Store.
-func (m *MemoryStore) Assignments(_ context.Context, user string, scopes []Scope) ([]Assignment, error) {
+func (m *MemoryStore) Assignments(ctx context.Context, user string, scopes []Scope) ([]Assignment, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var out []Assignment
@@ -120,7 +139,10 @@ func (m *MemoryStore) Assignments(_ context.Context, user string, scopes []Scope
 }
 
 // Link implements Store.
-func (m *MemoryStore) Link(_ context.Context, child, parent Scope) error {
+func (m *MemoryStore) Link(ctx context.Context, child, parent Scope) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.parents[child] = parent
@@ -128,7 +150,10 @@ func (m *MemoryStore) Link(_ context.Context, child, parent Scope) error {
 }
 
 // Parent implements Store.
-func (m *MemoryStore) Parent(_ context.Context, child Scope) (Scope, bool, error) {
+func (m *MemoryStore) Parent(ctx context.Context, child Scope) (Scope, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return Scope{}, false, err
+	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	p, ok := m.parents[child]

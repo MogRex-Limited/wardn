@@ -3,9 +3,13 @@ package wardn
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"time"
 )
+
+// migrationTimeout bounds how long New waits for store migrations.
+const migrationTimeout = 2 * time.Minute
 
 // DefaultPolicyFile is the policy file New reads when Config sets neither
 // File nor Policy.
@@ -28,6 +32,10 @@ type Config struct {
 	// data instead of links stored with Link. It must return the true parent
 	// from authoritative data; returning ok=false means "no parent".
 	ParentOf func(ctx context.Context, child Scope) (parent Scope, ok bool, err error)
+
+	// ManualMigrations stops New from migrating the Store's database
+	// schema. Set it if your deploy pipeline runs migrations itself.
+	ManualMigrations bool
 
 	// Clock supplies the current time for time-limited assignments.
 	// Default: the system clock. Tests can inject a fake clock.
@@ -93,6 +101,13 @@ func New(cfg Config) (*Warden, error) {
 	}
 	if w.clock == nil {
 		w.clock = systemClock{}
+	}
+	if m, ok := w.store.(Migrator); ok && !cfg.ManualMigrations {
+		ctx, cancel := context.WithTimeout(context.Background(), migrationTimeout)
+		defer cancel()
+		if err := m.Migrate(ctx); err != nil {
+			return nil, fmt.Errorf("wardn: migrating store schema: %w", err)
+		}
 	}
 	return w, nil
 }

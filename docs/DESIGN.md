@@ -32,7 +32,7 @@ roles:
 ```
 
 ```go
-w := wardn.MustNew(wardn.Config{File: "wardn.yaml", Store: wardnsql.New(db)})
+w := wardn.MustNew(wardn.Config{File: "wardn.yaml", Store: wardnsql.MustNew(db)})
 
 r.With(w.Require("loan:create")).Post("/loans", createLoan)
 ```
@@ -308,7 +308,7 @@ The core API is small. Most developers will only ever use `New`, `Require`, `Can
 ```go
 w, err := wardn.New(wardn.Config{
     File:  "wardn.yaml",          // or Policy: &wardn.Policy{...} to define in Go
-    Store: wardnsql.New(db),      // omitted → in-memory store (tests and demos only)
+    Store: wardnsql.MustNew(db),  // omitted → in-memory store (tests and demos only)
 })
 // wardn.MustNew panics instead of returning an error — convenient in main().
 ```
@@ -558,7 +558,8 @@ Design choices that keep adapters simple:
 | Package | Databases | Go module |
 |---|---|---|
 | `wardn.NewMemoryStore()` | In-process (tests, demos); the default when no store is configured | core package (it is the default, so it cannot live in a sub-package that imports the core) |
-| `wardn/store/sql` | PostgreSQL, MySQL/MariaDB, SQLite, SQL Server — through `database/sql`; the product brings its own driver | core (no driver dependency) |
+| `wardn/store/sql` (package `wardnsql`) | PostgreSQL 13+, MySQL 8.0+, MariaDB 10.6+, SQLite 3.24+, through `database/sql`; the product brings its own driver, and the dialect is detected from it | core (no driver dependency) |
+| SQL Server | Planned for M6 (completeness). Its upsert, placeholder and DDL syntax differ enough to need its own dialect and CI database. | core |
 | `wardn/store/mongo` | MongoDB | separate module |
 
 Separate Go modules mean a SQL user never downloads the MongoDB driver and vice versa. The core module depends only on the standard library and a YAML parser.
@@ -575,22 +576,31 @@ func TestMyStore(t *testing.T) {
 
 It runs the same behavioural tests that the official adapters pass: idempotency, tenant isolation, pagination, concurrency conflicts, and edge cases. An adapter that passes is correct.
 
-### 10.4 SQL schema (illustrative)
+### 10.4 SQL schema
+
+Schema version 1 (M3):
 
 ```
-wardn_assignments     (user_id, scope_type, scope_id, role_id,
-                       starts_at NULL, expires_at NULL, expiry_reported_at NULL,
-                       created_at, updated_at)                              PK (user_id, scope_type, scope_id, role_id)
-                                                                             IX (scope_type, scope_id)
-                                                                             IX (expires_at)
-wardn_roles           (id, owner_scope_type, owner_scope_id, name, description, version, created_at, updated_at)
-wardn_role_rules      (role_id, effect, permission)                         effect ∈ {allow, deny}; v1 writes only allow for custom roles
-wardn_role_assignable (role_id, scope_type)
-wardn_scope_links     (child_type, child_id, parent_type, parent_id)         PK (child_type, child_id)
-wardn_schema_version  (version)
+wardn_assignments        (user_id, role, scope_type, scope_id,
+                          starts_at NULL, expires_at NULL, created_at, updated_at)
+                          PK (user_id, scope_type, scope_id, role)   IX (scope_type, scope_id)
+wardn_scope_links        (child_type, child_id, parent_type, parent_id, updated_at)
+                          PK (child_type, child_id)
+wardn_schema_migrations  (version, applied_at)
 ```
 
-Migrations are automatic and versioned. Products can disable automatic migration and run them through their own tooling.
+Decisions:
+
+- **Exact comparison on every database.** On MySQL and MariaDB, IDs are stored as `VARBINARY`, because their default collations treat `o1` and `O1` (and often accented and trailing-space variants) as equal. That would let one scope match another's assignments (threat model T13). Postgres and SQLite compare text exactly by default.
+- **Times are Unix microseconds (`BIGINT`).** This is exact on every database, with no time-zone or driver-configuration pitfalls, and works past 2038. Rounding to microseconds never widens a window: starts round up, ends round down.
+- **Global is stored as an empty type and ID**, so all rows use the same key shape.
+- **Table names come only from a validated prefix** (`WithTablePrefix`, default `wardn_`); every value is a query parameter.
+
+Tables are added only when the code that uses them ships, each as a new migration version. Custom roles (`wardn_roles`, `wardn_role_rules` with an `effect` column, `wardn_role_assignable`) arrive in M5, and expiry reporting (`expiry_reported_at`) arrives with the sweeper. Before v1.0 nothing depends on the schema, so adding tables then costs nothing, and no table exists without tests exercising it.
+
+**Migration rules:** released migrations are never edited, only appended; every statement is idempotent (`IF NOT EXISTS`), because MySQL cannot run DDL inside a transaction; concurrent startups are safe (a Postgres advisory lock or MySQL `GET_LOCK`, released even if the caller's context is cancelled, with the connection discarded if release fails); and a database migrated by a *newer* wardn is refused (`ErrSchemaTooNew`) rather than used by an older one.
+
+Migrations are automatic and versioned: `wardn.New` runs them through the optional `wardn.Migrator` interface. Products can set `Config.ManualMigrations` and run `Store.Migrate` from their own deploy pipeline instead.
 
 ---
 
@@ -731,7 +741,7 @@ This is tested formally before the announcement (M8): a developer who has never 
 
 ```
 github.com/MogRex-Limited/wardn            core: policy, evaluation, memory store, HTTP middleware, context
-├── store/sql                              database/sql store
+├── store/sql      (package wardnsql)      database/sql store
 ├── storetest                              store conformance suite
 ├── wardntest                              testing helpers
 ├── cmd/wardn                              CLI: check, gen
@@ -765,7 +775,7 @@ The security pipeline is built **before any feature code**, so every line of war
 | **M0: Design** | This document; [threat model](THREAT_MODEL.md) | Approved by engineering leadership |
 | **M1: Secure foundation** | Go module, CI security gates (tests with race detector, golangci-lint with gosec, govulncheck, module verification, dependency allowlist), pre-push hook running the same gates locally, SHA-pinned actions, Dependabot, `SECURITY.md`, contribution rules, branch-protection and release process | Every gate runs and blocks on failure; repository settings applied |
 | **M2: Core engine** | Policy loading and validation, scopes and hierarchy, evaluation engine (all seven rules), `assignable_at`, time-limited assignments with injectable clock, per-request memoisation, memory store, `wardntest` | Every rule tested; property tests and fuzzing in place |
-| **M3: Storage** | SQL store (Postgres, MySQL, SQLite) with the full v1 schema, conformance suite, versioned migrations | All adapters pass `storetest` in CI against real databases |
+| **M3: Storage** | SQL store (Postgres, MySQL, MariaDB, SQLite), conformance suite, versioned migrations, real-database CI | All adapters pass `storetest` in CI against real databases |
 | **M4: HTTP and tooling** | `Require` / `RequireAny` / `RequireAll`, chi helpers, error handling, `cmd/wardn check` and `gen` | Every HTTP path tested, including fail-closed behaviour |
 | **M5: Custom roles** | Runtime roles (grants-only), escalation guard, introspection APIs, audit hooks, expiry sweeper | Escalation and isolation test suites pass |
 | **M6: Completeness** | MongoDB store, opt-in cross-request cache (memory, Redis) | Mongo passes `storetest`; cache invalidation and expiry tests pass |

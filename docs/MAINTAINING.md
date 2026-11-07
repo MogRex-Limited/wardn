@@ -21,7 +21,7 @@ Some protections in the [threat model](THREAT_MODEL.md) (S02–S05) cannot be en
   - [ ] Require approval of the most recent push (no self-approving after a reviewer's approval)
   - [ ] Require conversation resolution before merging
 - [ ] Require status checks to pass, with branches up to date:
-  - `Test (Go 1.26.x)`, `Test (Go 1.27.x)`, `Lint`, `Supply chain`
+  - `Test (Go 1.26.x)`, `Test (Go 1.27.x)`, `Lint`, `Supply chain`, `Integration (real databases)`
   - add `Analyze (Go)` when CodeQL is restored (see "CodeQL" below)
 - [ ] Require signed commits
 - [ ] Require linear history
@@ -52,6 +52,14 @@ git show 3fa1d16:.github/workflows/codeql.yml > .github/workflows/codeql.yml
 ```
 
 Update the pinned action SHAs before re-enabling it.
+
+### Database images
+
+The integration databases are pinned by digest in two places that must match: `tests/integration/compose.yaml` and the `integration` job in `.github/workflows/ci.yml`. Dependabot does not update them. Refresh them deliberately, at least once per milestone:
+
+```bash
+docker pull postgres:17-alpine && docker image inspect --format '{{index .RepoDigests 0}}' postgres:17-alpine
+```
 
 ### Billing
 

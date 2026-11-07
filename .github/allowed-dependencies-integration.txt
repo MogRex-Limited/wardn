@@ -1,0 +1,11 @@
+# Direct dependencies of the integration test module (tests/integration).
+#
+# This module is never imported by users; it exists so database drivers stay
+# out of wardn's own go.mod. Entries still need a justification and review.
+#
+# Format: <module path>  # <why it is needed>
+
+github.com/MogRex-Limited/wardn      # The module under test (replaced with ../..).
+github.com/jackc/pgx/v5              # PostgreSQL driver: the most widely used Go Postgres driver.
+github.com/go-sql-driver/mysql       # MySQL and MariaDB driver: the standard Go MySQL driver.
+modernc.org/sqlite                   # SQLite driver in pure Go: no cgo, runs everywhere.

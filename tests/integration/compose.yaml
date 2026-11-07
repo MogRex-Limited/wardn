@@ -1,0 +1,41 @@
+# Throwaway database servers for `make integration`. Images are pinned by
+# digest so the exact same servers run locally and in CI; update digests
+# deliberately. Data lives in tmpfs and is gone when the containers stop.
+name: wardn-integration
+
+services:
+  postgres:
+    image: postgres:17-alpine@sha256:3540c0362c809df084ffac0ae69fe794515f9de92692f02178bcdce0ef0302ac
+    environment:
+      POSTGRES_PASSWORD: wardn
+      POSTGRES_DB: wardn
+    ports: ["127.0.0.1:56432:5432"]
+    tmpfs: [/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 2s
+      retries: 30
+
+  mysql:
+    image: mysql:8.4@sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902
+    environment:
+      MYSQL_ROOT_PASSWORD: wardn
+      MYSQL_DATABASE: wardn
+    ports: ["127.0.0.1:56306:3306"]
+    tmpfs: [/var/lib/mysql]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-pwardn"]
+      interval: 2s
+      retries: 60
+
+  mariadb:
+    image: mariadb:11.4@sha256:d1891ede5a559f1086f55053bb8cc1569b0298338c4d72d71725a7f74f6ba620
+    environment:
+      MARIADB_ROOT_PASSWORD: wardn
+      MARIADB_DATABASE: wardn
+    ports: ["127.0.0.1:56307:3306"]
+    tmpfs: [/var/lib/mysql]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      retries: 60
