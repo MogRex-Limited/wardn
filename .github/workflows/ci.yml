@@ -50,9 +50,13 @@ jobs:
         run: go tool cover -func=coverage.out | tail -n 1
 
   lint:
-    name: Lint
+    name: Lint (${{ matrix.module }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [".", "store/mongo", "cache/redis", "tests/integration"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -64,16 +68,12 @@ jobs:
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.15.0
-      - name: Lint integration tests module
-        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
-        with:
-          version: v2.15.0
-          working-directory: tests/integration
+          working-directory: ${{ matrix.module }}
 
   supply-chain:
     name: Supply chain
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -82,22 +82,13 @@ jobs:
         with:
           go-version: "1.27.x"
           cache: false
-      - name: go.mod and go.sum are tidy
-        run: |
-          go mod tidy -diff
-          (cd tests/integration && go mod tidy -diff)
-      - name: Verify module checksums
-        run: |
-          go mod verify
-          (cd tests/integration && go mod verify)
+      # The same targets developers run locally, on every module.
+      - name: go.mod and go.sum are tidy, and checksums verify
+        run: make tidy
       - name: Direct dependencies are allowlisted
-        run: |
-          ./scripts/check-deps.sh
-          ./scripts/check-deps.sh tests/integration .github/allowed-dependencies-integration.txt
+        run: make deps
       - name: Known vulnerabilities (govulncheck)
-        run: |
-          go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
-          (cd tests/integration && go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...)
+        run: make vuln
 
   integration:
     name: Integration (real databases)
@@ -129,10 +120,22 @@ jobs:
         ports: ["3307:3306"]
         options: >-
           --health-cmd "healthcheck.sh --connect --innodb_initialized" --health-interval 2s --health-retries 60
+      mongo:
+        image: mongo:8.0@sha256:b9924c330a8bbc5800fe9c69f04a84e221eca7b28fd049a0354147d9908fa142
+        ports: ["27017:27017"]
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand(\"ping\").ok'" --health-interval 2s --health-retries 60
+      redis:
+        image: redis:7.4-alpine@sha256:c5d34a98396a4775e223c74e929162c35c5a2182901ba26b50ade939941ce14b
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 2s --health-retries 30
     env:
       WARDN_TEST_POSTGRES_DSN: postgres://postgres:wardn@127.0.0.1:5432/wardn?sslmode=disable
       WARDN_TEST_MYSQL_DSN: root:wardn@tcp(127.0.0.1:3306)/wardn
       WARDN_TEST_MARIADB_DSN: root:wardn@tcp(127.0.0.1:3307)/wardn
+      WARDN_TEST_MONGO_URI: mongodb://127.0.0.1:27017
+      WARDN_TEST_REDIS_ADDR: 127.0.0.1:6379
       WARDN_TEST_REQUIRE_ALL: "1" # fail, never skip, if a database is missing
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -142,6 +145,5 @@ jobs:
         with:
           go-version: "1.27.x"
           cache: false
-      - name: Store tests on SQLite, PostgreSQL, MySQL and MariaDB
-        working-directory: tests/integration
-        run: go test -race -shuffle=on -count=1 -v ./...
+      - name: SQL, MongoDB and Redis modules against real servers
+        run: make test-modules

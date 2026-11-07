@@ -96,6 +96,26 @@ All notable changes to wardn are documented here. The format follows
   - The conformance suite grows to 25 checks, including atomic name
     uniqueness and atomic versioned updates under concurrent writers.
 
+- Completeness (M6):
+  - Opt-in cross-request cache: `Config.Cache`, `Config.CacheTTL`,
+    `wardn.NewMemoryCache()` for a single instance, and the `cache/redis`
+    module (package `wardnredis`) for shared caching. It caches store data,
+    never decisions, so time windows stay exact. Version counters are bumped
+    before and after every change, so no instance serves stale data after a
+    change made through wardn. Keys are hashes. Cache failures fall back to
+    the store. `InvalidateCache` handles changes made behind wardn's back.
+    `ErrCacheInvalidation`.
+  - `cachetest`: the conformance suite for caches, including atomic counters.
+  - `store/mongo` module (package `wardnmongo`): a MongoDB store passing all
+    25 store checks, with no transactions needed and safe against operator
+    injection.
+  - Public types (`Scope`, `Assignment`, `CustomRole`, `RoleSpec`, `RoleInfo`,
+    `Decision`, `Permission`) have stable snake_case JSON field names.
+  - Build: every gate runs on every module, CI lints each module separately,
+    and the integration job adds MongoDB and Redis.
+  - SQL Server is not supported until a product needs it; products use
+    PostgreSQL and MySQL (DESIGN.md D12).
+
 ### Removed
 
 - CodeQL workflow, until the repository is public or GitHub Advanced

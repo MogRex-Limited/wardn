@@ -3,6 +3,7 @@ package wardn
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"slices"
@@ -10,21 +11,21 @@ import (
 
 // Decision is the outcome of an authorization check, with the reason.
 type Decision struct {
-	Allowed    bool
-	User       string
-	Permission string
-	Scope      Scope // the scope that was checked
+	Allowed    bool   `json:"allowed"`
+	User       string `json:"user"`
+	Permission string `json:"permission"`
+	Scope      Scope  `json:"scope"` // the scope that was checked
 
 	// Role is the role that decided the outcome: the role whose deny rule
 	// matched, or the role that granted the permission. Empty when no role
 	// matched or an error occurred.
-	Role string
+	Role string `json:"role,omitempty"`
 	// At is the scope where Role is assigned: Scope itself or an ancestor.
-	At Scope
+	At Scope `json:"at,omitzero"`
 	// Rule is the allow or deny pattern that matched, e.g. "loan:*".
-	Rule string
+	Rule string `json:"rule,omitempty"`
 	// Reason explains the decision in words, for logs and debugging.
-	Reason string
+	Reason string `json:"reason"`
 }
 
 // Can reports whether user holds permission at scope. It returns false on
@@ -127,7 +128,8 @@ func (w *Warden) grants(ctx context.Context, user string, scope Scope) ([]grant,
 	if err != nil {
 		return nil, err
 	}
-	assignments, err := w.assignments(ctx, user, scope, chain)
+	cv := w.versionsFor(ctx, chain)
+	assignments, err := w.assignments(ctx, user, scope, chain, cv)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +154,7 @@ func (w *Warden) grants(ctx context.Context, user string, scope Scope) ([]grant,
 			customIDs = append(customIDs, a.Role)
 		}
 	}
-	customs, err := w.customRoles(ctx, customIDs)
+	customs, err := w.customRoles(ctx, customIDs, cv)
 	if err != nil {
 		return nil, err
 	}
@@ -233,6 +235,12 @@ func (w *Warden) chain(ctx context.Context, scope Scope) ([]Scope, error) {
 	chain := make([]Scope, 1, w.policy.maxDepth+2)
 	chain[0] = scope
 	cur := scope
+	var links *uint64 // the links counter, when parents can be cached
+	if w.cache != nil && w.parentOf == nil && w.policy.scopeTypes[scope.Type].parent != "" {
+		if vs, err := w.cache.Counters(ctx, []string{counterLinks}); err == nil && len(vs) == 1 {
+			links = &vs[0]
+		}
+	}
 	// Each step moves to the declared parent type, so the loop is bounded
 	// by the depth of the scope type tree (threat model T12).
 	for range w.policy.maxDepth {
@@ -240,7 +248,7 @@ func (w *Warden) chain(ctx context.Context, scope Scope) ([]Scope, error) {
 		if want == "" {
 			break
 		}
-		parent, ok, err := w.parent(ctx, cur)
+		parent, ok, err := w.parent(ctx, cur, links)
 		if err != nil {
 			return nil, fmt.Errorf("wardn: resolving parent of %s: %w", cur, err)
 		}
@@ -260,7 +268,7 @@ func (w *Warden) chain(ctx context.Context, scope Scope) ([]Scope, error) {
 	return append(chain, Global), nil
 }
 
-func (w *Warden) parent(ctx context.Context, child Scope) (Scope, bool, error) {
+func (w *Warden) parent(ctx context.Context, child Scope, links *uint64) (Scope, bool, error) {
 	m := w.memoFrom(ctx)
 	if m != nil {
 		m.mu.Lock()
@@ -275,9 +283,17 @@ func (w *Warden) parent(ctx context.Context, child Scope) (Scope, bool, error) {
 		ok  bool
 		err error
 	)
-	if w.parentOf != nil {
+	switch {
+	case w.parentOf != nil:
 		p, ok, err = w.parentOf(ctx, child)
-	} else {
+	case links != nil:
+		var cp cachedParent
+		cp, err = cached(ctx, w, cacheKey("parent", child, *links), func() (cachedParent, error) {
+			p, ok, err := w.store.Parent(ctx, child)
+			return cachedParent{Parent: p, OK: ok}, err
+		})
+		p, ok = cp.Parent, cp.OK
+	default:
 		p, ok, err = w.store.Parent(ctx, child)
 	}
 	if err != nil {
@@ -291,7 +307,7 @@ func (w *Warden) parent(ctx context.Context, child Scope) (Scope, bool, error) {
 	return p, ok, nil
 }
 
-func (w *Warden) assignments(ctx context.Context, user string, scope Scope, chain []Scope) ([]Assignment, error) {
+func (w *Warden) assignments(ctx context.Context, user string, scope Scope, chain []Scope, cv *cacheVersions) ([]Assignment, error) {
 	m := w.memoFrom(ctx)
 	key := assignmentsKey{user: user, scope: scope}
 	if m != nil {
@@ -302,7 +318,14 @@ func (w *Warden) assignments(ctx context.Context, user string, scope Scope, chai
 			return as, nil
 		}
 	}
-	as, err := w.store.Assignments(ctx, user, slices.Clone(chain))
+	load := func() ([]Assignment, error) { return w.store.Assignments(ctx, user, slices.Clone(chain)) }
+	var as []Assignment
+	var err error
+	if cv != nil {
+		as, err = cached(ctx, w, cacheKey("assignments", user, scope, cv.root, cv.tenant, cv.global), load)
+	} else {
+		as, err = load()
+	}
 	if err != nil {
 		return nil, fmt.Errorf("wardn: loading assignments: %w", err)
 	}
@@ -314,9 +337,10 @@ func (w *Warden) assignments(ctx context.Context, user string, scope Scope, chai
 	return as, nil
 }
 
-// customRoles loads custom roles by ID, using the request memo. Missing
-// roles map to nil.
-func (w *Warden) customRoles(ctx context.Context, ids []string) (map[string]*CustomRole, error) {
+// customRoles loads custom roles by ID, using the request memo and, when cv
+// is set, the cache. Missing roles map to nil. Management operations pass
+// a nil cv, so they always read the latest version from the store.
+func (w *Warden) customRoles(ctx context.Context, ids []string, cv *cacheVersions) (map[string]*CustomRole, error) {
 	out := make(map[string]*CustomRole, len(ids))
 	if len(ids) == 0 {
 		return out, nil
@@ -341,14 +365,36 @@ func (w *Warden) customRoles(ctx context.Context, ids []string) (map[string]*Cus
 	}
 	slices.Sort(missing)
 	missing = slices.Compact(missing)
-	found, err := w.store.Roles(ctx, missing)
-	if err != nil {
-		return nil, fmt.Errorf("wardn: loading custom roles: %w", err)
+	roleKey := func(id string) string { return cacheKey("role", id, cv.root, cv.tenant, cv.global) }
+	toLoad := missing
+	if cv != nil {
+		toLoad = nil
+		for _, id := range missing {
+			var r *CustomRole
+			if b, ok, err := w.cache.Get(ctx, roleKey(id)); err == nil && ok && json.Unmarshal(b, &r) == nil && (r == nil || r.ID == id) {
+				out[id] = r
+				continue
+			}
+			toLoad = append(toLoad, id)
+		}
 	}
-	for i := range found {
-		r := found[i]
-		if slices.Contains(missing, r.ID) { // never trust a store to filter correctly
-			out[r.ID] = &r
+	if len(toLoad) > 0 {
+		found, err := w.store.Roles(ctx, toLoad)
+		if err != nil {
+			return nil, fmt.Errorf("wardn: loading custom roles: %w", err)
+		}
+		for i := range found {
+			r := found[i]
+			if slices.Contains(toLoad, r.ID) { // never trust a store to filter correctly
+				out[r.ID] = &r
+			}
+		}
+		if cv != nil {
+			for _, id := range toLoad {
+				if b, err := json.Marshal(out[id]); err == nil { // nil is cached too: "no such role"
+					_ = w.cache.Set(ctx, roleKey(id), b, w.cacheTTL)
+				}
+			}
 		}
 	}
 	if m != nil {

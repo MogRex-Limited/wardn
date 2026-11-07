@@ -1,0 +1,7 @@
+# Direct dependencies of the Redis cache module (cache/redis).
+# Users who choose this cache download these; everyone else never does.
+#
+# Format: <module path>  # <why it is needed>
+
+github.com/MogRex-Limited/wardn   # The core library (replaced with ../.. until the first release).
+github.com/redis/go-redis/v9      # The official Redis client for Go, maintained by Redis Ltd.

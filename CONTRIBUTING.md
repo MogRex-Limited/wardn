@@ -20,10 +20,10 @@ make check
 
 Don't bypass the hook with `git push --no-verify`.
 
-`make check` tests the SQL store on SQLite. To test it on PostgreSQL, MySQL and MariaDB as CI does, run this (it needs Docker):
+`make check` tests every module, using SQLite for the SQL store and skipping servers it can't reach. To test against real PostgreSQL, MySQL, MariaDB, MongoDB and Redis, as CI does, run this (it needs Docker):
 
 ```bash
-make integration   # starts the databases and runs the store tests on all of them
+make integration   # starts every server and runs every module's tests against them
 make db-down       # stops them
 ```
 

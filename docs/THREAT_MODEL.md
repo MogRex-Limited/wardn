@@ -90,6 +90,7 @@ wardn validates all of these:
 | **T22** | **Concurrent edits** cause lost updates to a role, re-adding a permission someone just removed. | A3 | Optimistic concurrency on role updates (`ErrConflict`). |
 | **T23** | **Resource exhaustion through huge inputs:** a giant policy file, millions of roles in a spec, or an unbounded `Members` page. | A3, A7 | Size limits on policy files, role specs and IDs; `Members` is paginated with a maximum page size. The YAML parser is fuzzed, and its alias-expansion limits are tested. |
 | **T24** | **Cache poisoning or key collision** (cache opt-in only). | A2, A3 | Structured cache keys (T13). Cache values are produced only by wardn. A shared cache (Redis) must be private to the product; the docs require authentication and TLS. |
+| **T26** | **Query-operator injection (MongoDB):** an ID such as `{"$ne": ""}` matches every document. | A1, A2 | The MongoDB store only ever uses user-supplied values as typed string values in filters, never as query documents or field names; tested with operator-like IDs. |
 | **T25** | **Race conditions** in concurrent checks and changes produce inconsistent decisions. | A2 | Immutable compiled policy; per-request memo scoped to one request; every package tested with `-race`. |
 
 ---
@@ -118,7 +119,7 @@ Threats with a `TestThreat_` test, by milestone:
 | **Tested at the store level (M3)** | T01 (`FiltersByUser`, `FiltersByScope`), T13 (`ExactIdentity`: case, Unicode normalisation, width and trailing space on every database), T08 (`TestFailClosedWhenDatabaseDown`), T25 (`Concurrency`), SQL injection through IDs (`HostileAndLongIDs`). These run in the `storetest` conformance suite against SQLite, PostgreSQL, MySQL and MariaDB on every change. |
 | **Tested (M4)** | T08 over HTTP (store error → 500, handler not run), T16 at route registration, T17 (`AuditRoutes`, proven against a deliberately unprotected chi route), T18 over HTTP, T20 (error bodies and headers reveal nothing) |
 | **Tested (M5)** | T03, T04, T05, T06 (guard tests, plus a property test that attacks the guard in 300 random worlds against the reference implementation), T15 (role-name spoofing), T21 (audit veto and failure reporting), T22 (concurrent edits, in the core and atomically in every store) |
-| Planned for M6 (cache) | T24 |
+| **Tested (M6)** | T24 (cache values validated, keys hashed, invalidation proven by a property test across two instances and by a real two-instance Redis test), T26 (MongoDB operator injection) |
 | Planned for M8 (docs, reference apps) | T02 |
 | Partly mitigated, test planned | T19: the clock is injectable and expiry is tested at exact boundaries; skew behaviour is documented in M8 |
 | Supply chain (process, not unit tests) | S01–S07: enforced by CI gates, repository settings and review (docs/MAINTAINING.md) |

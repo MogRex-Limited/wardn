@@ -27,15 +27,15 @@ var (
 // Assignment records that a user holds a role in a scope, optionally only
 // within a time window.
 type Assignment struct {
-	User  string
-	Role  string // a system role name, or a custom role ID ("cr-...")
-	Scope Scope
+	User  string `json:"user"`
+	Role  string `json:"role"` // a system role name, or a custom role ID ("cr-...")
+	Scope Scope  `json:"scope"`
 
 	// StartsAt and ExpiresAt bound when the assignment applies. The zero
 	// time means "no bound". The window is half-open: it applies from
 	// StartsAt (inclusive) until ExpiresAt (exclusive).
-	StartsAt  time.Time
-	ExpiresAt time.Time
+	StartsAt  time.Time `json:"starts_at,omitzero"`
+	ExpiresAt time.Time `json:"expires_at,omitzero"`
 }
 
 // activeAt reports whether the assignment's time window includes t.

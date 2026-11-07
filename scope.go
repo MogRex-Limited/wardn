@@ -7,8 +7,8 @@ package wardn
 // Scopes are compared exactly, field by field: "o1" and "O1" are different
 // scopes. wardn never normalises IDs.
 type Scope struct {
-	Type string // a scope type declared in the policy, e.g. "branch"
-	ID   string // the application's identifier for this instance, e.g. "b7"
+	Type string `json:"type"` // a scope type declared in the policy, e.g. "branch"
+	ID   string `json:"id"`   // the application's identifier for this instance, e.g. "b7"
 }
 
 // Global is the implicit scope above every other scope. A role assigned at

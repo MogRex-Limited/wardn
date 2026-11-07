@@ -55,9 +55,21 @@ var ErrAuditRejected = errors.New("wardn: the audit hook rejected the change")
 // shows that the change did not happen.
 func (w *Warden) change(ctx context.Context, ev Event, write func() error) error {
 	ev.At = w.clock.Now()
+	counters, err := w.countersFor(ctx, ev)
+	if err != nil {
+		return err
+	}
 	if w.onChange != nil {
 		if err := w.onChange(ctx, ev); err != nil {
 			return fmt.Errorf("%w: %w", ErrAuditRejected, err)
+		}
+	}
+	// Invalidate before writing (if that fails, nothing changes) and again
+	// after, so an entry cached from the old data by a concurrent reader
+	// between the two is never reachable.
+	if len(counters) > 0 {
+		if err := w.cache.Incr(ctx, counters); err != nil {
+			return fmt.Errorf("wardn: invalidating cache before %s: %w", ev.Type, err)
 		}
 	}
 	if err := write(); err != nil {
@@ -71,5 +83,10 @@ func (w *Warden) change(ctx context.Context, ev Event, write func() error) error
 		return fmt.Errorf("wardn: saving %s: %w", ev.Type, err)
 	}
 	w.memoFrom(ctx).forget()
+	if len(counters) > 0 {
+		if err := w.cache.Incr(ctx, counters); err != nil {
+			return fmt.Errorf("%w (%s): %w", ErrCacheInvalidation, ev.Type, err)
+		}
+	}
 	return nil
 }
