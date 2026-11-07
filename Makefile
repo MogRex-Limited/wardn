@@ -7,7 +7,12 @@ GOVULNCHECK_VERSION   := v1.9.0
 GOLANGCI_LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 GOVULNCHECK   := go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 
-.PHONY: check test lint fmt vuln deps tidy cover
+.PHONY: check test lint fmt vuln deps tidy cover hooks
+
+## hooks: install the pre-push hook that runs `make check` (once per clone)
+hooks:
+	git config core.hooksPath .githooks
+	@echo "pre-push hook installed: every push now runs make check"
 
 ## check: run every CI gate (run this before opening a pull request)
 check: tidy deps lint test vuln
@@ -23,7 +28,7 @@ cover:
 
 ## lint: run all linters, including security linters
 lint:
-	$(GOLANGCI_LINT) run ./...
+	$(GOLANGCI_LINT) run --allow-parallel-runners ./...
 
 ## fmt: format all code
 fmt:

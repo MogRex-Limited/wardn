@@ -21,7 +21,8 @@ Some protections in the [threat model](THREAT_MODEL.md) (S02–S05) cannot be en
   - [ ] Require approval of the most recent push (no self-approving after a reviewer's approval)
   - [ ] Require conversation resolution before merging
 - [ ] Require status checks to pass, with branches up to date:
-  - `Test (Go 1.26.x)`, `Test (Go 1.27.x)`, `Lint`, `Supply chain`, `Analyze (Go)`
+  - `Test (Go 1.26.x)`, `Test (Go 1.27.x)`, `Lint`, `Supply chain`
+  - add `Analyze (Go)` when CodeQL is restored (see "CodeQL" below)
 - [ ] Require signed commits
 - [ ] Require linear history
 - [ ] Block force pushes
@@ -38,11 +39,27 @@ Some protections in the [threat model](THREAT_MODEL.md) (S02–S05) cannot be en
 - [ ] Dependabot alerts: enabled
 - [ ] Dependabot security updates: enabled
 - [ ] Secret scanning and push protection: enabled
-- [ ] CodeQL: results visible in the Security tab. Code scanning on private repositories requires GitHub Advanced Security (Code Security); if it is unavailable, the CodeQL workflow will fail and must be enabled before M9.
+- [ ] CodeQL: see below.
+
+### CodeQL (currently disabled)
+
+CodeQL code scanning on a private repository requires paid GitHub Advanced Security (Code Security), so the CodeQL workflow has been removed for now. `gosec`, `staticcheck` and `govulncheck` still run on every change.
+
+Restore it when the repository goes public (M10, where it is free), or earlier if the organisation enables Code Security. The removed workflow is in git history at commit `3fa1d16`:
+
+```bash
+git show 3fa1d16:.github/workflows/codeql.yml > .github/workflows/codeql.yml
+```
+
+Update the pinned action SHAs before re-enabling it.
+
+### Billing
+
+GitHub Actions on a private repository uses the organisation's included minutes (2,000 a month on the Free plan). If the organisation's billing is in a failed-payment state, **no workflows run at all**, including the security gates. An organisation owner must keep billing in good standing, even with a $0 spending limit. Until it is, the pre-push hook (`make hooks`) is the only enforcement, and it can be bypassed.
 
 ### Actions (Settings → Actions → General)
 
-- [ ] Allow only actions from GitHub and these verified creators: `actions/*`, `github/codeql-action/*`, `golangci/golangci-lint-action`
+- [ ] Allow only actions from GitHub and these verified creators: `actions/*`, `golangci/golangci-lint-action` (add `github/codeql-action/*` when CodeQL is restored)
 - [ ] Require actions to be pinned to a full-length commit SHA
 - [ ] Workflow permissions: **read repository contents** (default token is read-only)
 - [ ] Do **not** allow GitHub Actions to create or approve pull requests

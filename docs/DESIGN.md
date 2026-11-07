@@ -616,7 +616,7 @@ The full analysis, including attackers, trust boundaries, assumptions, and every
 wardn itself must not become the way in. Since the first commit:
 
 - **Minimal dependencies.** The core uses only the standard library and one YAML parser. Every direct dependency is on an explicit allowlist that CI enforces; adding one requires a written justification and maintainer approval.
-- **Security gates on every change.** `govulncheck`, `gosec` (via golangci-lint), `staticcheck`, CodeQL, the race detector, and module verification all block merging.
+- **Security gates on every change.** `govulncheck`, `gosec` (via golangci-lint), `staticcheck`, the race detector, and module verification all block merging, and also run locally before every push through a pre-push hook. CodeQL is added when the repository goes public (M10); on a private repository it requires paid GitHub Advanced Security.
 - **Pinned CI.** Every GitHub Action is pinned to a full commit SHA, workflows run with read-only tokens, and Dependabot proposes updates for review.
 - **Protected main branch.** Changes land only through reviewed pull requests with passing checks and signed commits.
 - **Verifiable releases.** Releases are signed tags. The Go checksum database (`sum.golang.org`) guarantees every user downloads byte-identical source for a version. Binaries (the CLI) ship with build-provenance attestations.
@@ -757,7 +757,7 @@ The security pipeline is built **before any feature code**, so every line of war
 | Milestone | Contents | Exit criteria |
 |---|---|---|
 | **M0: Design** | This document; [threat model](THREAT_MODEL.md) | Approved by engineering leadership |
-| **M1: Secure foundation** | Go module, CI security gates (tests with race detector, golangci-lint with gosec, govulncheck, CodeQL, module verification, dependency allowlist), SHA-pinned actions, Dependabot, `SECURITY.md`, contribution rules, branch-protection and release process | Every gate runs and blocks on failure; repository settings applied |
+| **M1: Secure foundation** | Go module, CI security gates (tests with race detector, golangci-lint with gosec, govulncheck, module verification, dependency allowlist), pre-push hook running the same gates locally, SHA-pinned actions, Dependabot, `SECURITY.md`, contribution rules, branch-protection and release process | Every gate runs and blocks on failure; repository settings applied |
 | **M2: Core engine** | Policy loading and validation, scopes and hierarchy, evaluation engine (all seven rules), `assignable_at`, time-limited assignments with injectable clock, per-request memoisation, memory store, `wardntest` | Every rule tested; property tests and fuzzing in place |
 | **M3: Storage** | SQL store (Postgres, MySQL, SQLite) with the full v1 schema, conformance suite, versioned migrations | All adapters pass `storetest` in CI against real databases |
 | **M4: HTTP and tooling** | `Require` / `RequireAny` / `RequireAll`, chi helpers, error handling, `cmd/wardn check` and `gen` | Every HTTP path tested, including fail-closed behaviour |
@@ -766,7 +766,7 @@ The security pipeline is built **before any feature code**, so every line of war
 | **M7: Hardening** | Adversarial suite, extended fuzzing campaign, mutation testing, internal security review, **independent external audit** | No open high or critical findings |
 | **M8: Proof and documentation** | Reference applications (multi-branch bank, multi-tenant SaaS, flat app, school system), quick start, concepts, recipes, API reference; fresh-developer usability test; benchmarks | All four reference apps built cleanly on the public API; usability test passes unaided |
 | **M9: v1.0 announcement** | Stability guarantee, release, internal announcement | Becomes the standard for new products |
-| **M10: Open source** | Licence, public repository, launch post and talk | Leadership and legal approval |
+| **M10: Open source** | Licence, public repository, CodeQL code scanning (free for public repositories), launch post and talk | Leadership and legal approval |
 
 Versioning: semantic versioning. The API may change during `v0.x`. From `v1.0`, breaking changes require a new major version. The YAML format carries its own `version` field.
 
