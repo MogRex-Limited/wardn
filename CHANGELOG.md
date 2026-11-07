@@ -35,6 +35,24 @@ All notable changes to wardn are documented here. The format follows
   - Tests: one per evaluation rule; `TestThreat_` tests for 13 threats; a
     property test against an independent reference implementation; fuzz targets.
 
+- Storage (M3):
+  - `store/sql` (package `wardnsql`): a `Store` for PostgreSQL, MySQL, MariaDB
+    and SQLite over `database/sql`, with no driver dependency. The dialect is
+    detected from the driver. IDs compare exactly on every database (binary
+    columns on MySQL/MariaDB), times are stored as microseconds without ever
+    widening a window, and table names come only from a validated prefix.
+  - Versioned, idempotent migrations, safe under concurrent startup, that
+    refuse a schema written by a newer wardn (`ErrSchemaTooNew`). `wardn.New`
+    runs them through the new `Migrator` interface unless
+    `Config.ManualMigrations` is set.
+  - `storetest`: the conformance suite every `Store` must pass, covering
+    isolation, exact identity, hostile IDs, time handling, cancellation and
+    concurrency.
+  - `MemoryStore` now honours context cancellation.
+  - Integration test module (`tests/integration`) running the suite against
+    real PostgreSQL, MySQL and MariaDB (Docker locally with `make integration`,
+    service containers in CI), with its own dependency allowlist.
+
 ### Removed
 
 - CodeQL workflow, until the repository is public or GitHub Advanced

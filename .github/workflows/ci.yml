@@ -64,6 +64,11 @@ jobs:
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.15.0
+      - name: Lint integration tests module
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
+          working-directory: tests/integration
 
   supply-chain:
     name: Supply chain
@@ -78,10 +83,65 @@ jobs:
           go-version: "1.27.x"
           cache: false
       - name: go.mod and go.sum are tidy
-        run: go mod tidy -diff
+        run: |
+          go mod tidy -diff
+          (cd tests/integration && go mod tidy -diff)
       - name: Verify module checksums
-        run: go mod verify
+        run: |
+          go mod verify
+          (cd tests/integration && go mod verify)
       - name: Direct dependencies are allowlisted
-        run: ./scripts/check-deps.sh
+        run: |
+          ./scripts/check-deps.sh
+          ./scripts/check-deps.sh tests/integration .github/allowed-dependencies-integration.txt
       - name: Known vulnerabilities (govulncheck)
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+        run: |
+          go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+          (cd tests/integration && go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...)
+
+  integration:
+    name: Integration (real databases)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Images pinned by digest; keep in sync with tests/integration/compose.yaml.
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:3540c0362c809df084ffac0ae69fe794515f9de92692f02178bcdce0ef0302ac
+        env:
+          POSTGRES_PASSWORD: wardn
+          POSTGRES_DB: wardn
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-retries 30
+      mysql:
+        image: mysql:8.4@sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902
+        env:
+          MYSQL_ROOT_PASSWORD: wardn
+          MYSQL_DATABASE: wardn
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -pwardn" --health-interval 2s --health-retries 60
+      mariadb:
+        image: mariadb:11.4@sha256:d1891ede5a559f1086f55053bb8cc1569b0298338c4d72d71725a7f74f6ba620
+        env:
+          MARIADB_ROOT_PASSWORD: wardn
+          MARIADB_DATABASE: wardn
+        ports: ["3307:3306"]
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized" --health-interval 2s --health-retries 60
+    env:
+      WARDN_TEST_POSTGRES_DSN: postgres://postgres:wardn@127.0.0.1:5432/wardn?sslmode=disable
+      WARDN_TEST_MYSQL_DSN: root:wardn@tcp(127.0.0.1:3306)/wardn
+      WARDN_TEST_MARIADB_DSN: root:wardn@tcp(127.0.0.1:3307)/wardn
+      WARDN_TEST_REQUIRE_ALL: "1" # fail, never skip, if a database is missing
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.x"
+          cache: false
+      - name: Store tests on SQLite, PostgreSQL, MySQL and MariaDB
+        working-directory: tests/integration
+        run: go test -race -shuffle=on -count=1 -v ./...

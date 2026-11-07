@@ -115,6 +115,7 @@ Threats with a `TestThreat_` test, by milestone:
 | Status | Threats |
 |---|---|
 | **Tested (M2)** | T01, T07, T08, T09, T10, T11, T12, T13, T14, T16, T18, T23, T25 |
+| **Tested at the store level (M3)** | T01 (`FiltersByUser`, `FiltersByScope`), T13 (`ExactIdentity`: case, Unicode normalisation, width and trailing space on every database), T08 (`TestFailClosedWhenDatabaseDown`), T25 (`Concurrency`), SQL injection through IDs (`HostileAndLongIDs`). These run in the `storetest` conformance suite against SQLite, PostgreSQL, MySQL and MariaDB on every change. |
 | Planned for M4 (HTTP) | T17, T20 |
 | Planned for M5 (custom roles, audit) | T03, T04, T05, T06, T15, T21, T22 |
 | Planned for M6 (cache) | T24 |
