@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -140,4 +141,43 @@ func TestFailures(t *testing.T) {
 	expectFatal(t, "role not assignable globally", func(tb testing.TB) {
 		wardntest.AsRole(tb, w, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil), "teller")
 	})
+}
+
+func TestAuditRoutes(t *testing.T) {
+	w := wardntest.New(t, policy)
+	ok := http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) { rw.WriteHeader(http.StatusOK) })
+	mux := http.NewServeMux()
+	mux.Handle("GET /protected", w.Require("loan:create")(ok))
+	mux.Handle("GET /forgotten", ok) // the bug AuditRoutes exists to catch
+	mux.Handle("GET /me", ok)        // deliberately open to any signed-in user
+	routes := []wardntest.Route{{"GET", "/protected"}, {"GET", "/forgotten"}, {"GET", "/me"}}
+
+	ft := &auditT{TB: t}
+	wardntest.AuditRoutes(ft, mux, nil, routes, wardntest.Route{Method: "GET", Path: "/me"})
+	if len(ft.errors) != 1 || !strings.Contains(ft.errors[0], "GET /forgotten answered 200") {
+		t.Fatalf("errors = %q", ft.errors)
+	}
+
+	// An authenticate function that doesn't authenticate is reported, not
+	// mistaken for protection.
+	ft = &auditT{TB: t}
+	noAuth := func(r *http.Request, _ string) *http.Request { return r }
+	wardntest.AuditRoutes(ft, mux, noAuth, routes[:1])
+	if len(ft.errors) != 1 || !strings.Contains(ft.errors[0], "answered 401") {
+		t.Fatalf("errors = %q", ft.errors)
+	}
+
+	expectFatal(t, "no routes", func(tb testing.TB) { wardntest.AuditRoutes(tb, mux, nil, nil) })
+}
+
+// auditT records Errorf calls.
+type auditT struct {
+	testing.TB
+	errors []string
+}
+
+func (a *auditT) Helper() {}
+
+func (a *auditT) Errorf(format string, args ...any) {
+	a.errors = append(a.errors, fmt.Sprintf(format, args...))
 }

@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -155,4 +156,60 @@ func (c *Clock) Set(t time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.now = t
+}
+
+// Route is a request to make: an HTTP method and a concrete path, with any
+// path parameters filled in (for example "/orgs/acme/loans").
+type Route struct {
+	Method string
+	Path   string
+}
+
+func (r Route) String() string { return r.Method + " " + r.Path }
+
+// AuditUser is the user ID AuditRoutes makes requests as. It holds no roles.
+const AuditUser = "wardntest-audit-no-roles"
+
+// AuditRoutes finds routes that forgot to check permissions (threat model
+// T17). It requests every route as AuditUser, an authenticated user who
+// holds no roles, and fails the test for each route that does not answer
+// 403 Forbidden. Routes that are meant to be open to every signed-in user
+// go in public.
+//
+// authenticate must make a request authenticated as the given user, the way
+// the application's real authentication middleware expects (for example by
+// setting a test token header). If it is nil, the user is put directly in
+// the request context with wardn.WithUser, which works when handler does
+// not include the authentication middleware.
+//
+// With chi, collect the routes with chi.Walk and fill in path parameters.
+func AuditRoutes(t testing.TB, handler http.Handler, authenticate func(r *http.Request, userID string) *http.Request, routes []Route, public ...Route) {
+	t.Helper()
+	if len(routes) == 0 {
+		t.Fatalf("wardntest: AuditRoutes was given no routes")
+	}
+	if authenticate == nil {
+		authenticate = func(r *http.Request, user string) *http.Request {
+			return r.WithContext(wardn.WithUser(r.Context(), user))
+		}
+	}
+	isPublic := make(map[Route]bool, len(public))
+	for _, p := range public {
+		isPublic[p] = true
+	}
+	for _, route := range routes {
+		if isPublic[route] {
+			continue
+		}
+		req := authenticate(httptest.NewRequestWithContext(t.Context(), route.Method, route.Path, nil), AuditUser)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		switch rec.Code {
+		case http.StatusForbidden:
+		case http.StatusUnauthorized:
+			t.Errorf("wardntest: %s answered 401: the audit user was not authenticated, so this route was not really checked; fix the authenticate function", route)
+		default:
+			t.Errorf("wardntest: %s answered %d to a user with no roles; protect it with Require, or list it as public", route, rec.Code)
+		}
+	}
 }

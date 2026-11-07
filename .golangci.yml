@@ -89,6 +89,13 @@ linters:
       - path: ^cmd/
         linters:
           - forbidigo
+      # Tests read and write files under t.TempDir() and run the go
+      # command; paths and commands come from the test itself, not from
+      # outside input. Only these three rules, and only in tests.
+      - path: _test\.go$
+        linters:
+          - gosec
+        text: "G(204|304|703):"
 
 issues:
   # Never hide findings: by default golangci-lint reports one issue per line

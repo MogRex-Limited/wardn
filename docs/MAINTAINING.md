@@ -67,7 +67,7 @@ GitHub Actions on a private repository uses the organisation's included minutes 
 
 ### Actions (Settings → Actions → General)
 
-- [ ] Allow only actions from GitHub and these verified creators: `actions/*`, `golangci/golangci-lint-action` (add `github/codeql-action/*` when CodeQL is restored)
+- [ ] Allow only actions from GitHub and these verified creators: `actions/*` (including `actions/attest-build-provenance`), `golangci/golangci-lint-action` (add `github/codeql-action/*` when CodeQL is restored)
 - [ ] Require actions to be pinned to a full-length commit SHA
 - [ ] Workflow permissions: **read repository contents** (default token is read-only)
 - [ ] Do **not** allow GitHub Actions to create or approve pull requests
@@ -102,7 +102,15 @@ wardn is a Go module: users download source through the Go module proxy, and the
 4. Create the GitHub release from the tag, with the changelog section as notes.
 5. Check that the new version appears on `pkg.go.dev` and that `go get github.com/MogRex-Limited/wardn@v0.1.0` works.
 
-From M4, when the `wardn` CLI exists, a release workflow will build the CLI binaries in CI and publish them with build-provenance attestations, so users can verify that a binary was built from the tagged source.
+Pushing the tag starts `.github/workflows/release.yml`. It:
+
+1. refuses the release unless the tag is an annotated tag whose signature GitHub verifies;
+2. runs the tests;
+3. builds the `wardn` CLI for Linux, macOS and Windows (amd64 and arm64) reproducibly;
+4. publishes the binaries with a `SHA256SUMS` file and Sigstore-signed build provenance;
+5. creates the GitHub release.
+
+Anyone can verify a downloaded binary with `gh attestation verify <file> --repo MogRex-Limited/wardn`. Developers who install with `go install` are protected by the Go checksum database instead.
 
 ### Versioning
 
