@@ -263,6 +263,7 @@ func TestHTTPStatus(t *testing.T) {
 		ErrConflict:                   http.StatusConflict,
 		ErrRoleNameTaken:              http.StatusConflict,
 		ErrRoleInUse:                  http.StatusConflict,
+		ErrAlreadyLinked:              http.StatusConflict,
 		context.Canceled:              http.StatusInternalServerError,
 	} {
 		if got := HTTPStatus(err); got != want {

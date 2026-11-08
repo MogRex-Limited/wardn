@@ -32,7 +32,7 @@ DB_ENV := WARDN_TEST_POSTGRES_DSN='postgres://postgres:wardn@127.0.0.1:56432/war
           WARDN_TEST_MONGO_URI='mongodb://127.0.0.1:56017' \
           WARDN_TEST_REDIS_ADDR='127.0.0.1:56379'
 
-.PHONY: check test test-modules integration db-up db-down lint fmt vuln deps tidy cover hooks mutation fuzz docs docs-build
+.PHONY: check test test-modules integration db-up db-down bench bench-all lint fmt vuln deps tidy cover hooks mutation fuzz docs docs-build
 
 ## hooks: install the pre-push hook that runs `make check` (once per clone)
 hooks:
@@ -59,6 +59,19 @@ db-up:
 	$(COMPOSE) up -d --wait
 db-down:
 	$(COMPOSE) down
+
+## bench: benchmark checks on a bank-sized dataset (memory store, SQLite) and whole requests in the bank app
+bench:
+	go test -run '^$$' -bench . -benchtime 2s .
+	cd $(INTEGRATION) && go test -run '^$$' -bench 'SQL/sqlite' -benchtime 2s .
+	cd examples && go test -run '^$$' -bench . -benchtime 2s ./bank
+
+## bench-all: also benchmark PostgreSQL, MySQL, MariaDB and MongoDB, started in Docker
+bench-all: db-up
+	go test -run '^$$' -bench . -benchtime 2s .
+	cd $(INTEGRATION) && $(DB_ENV) WARDN_TEST_REQUIRE_ALL=1 go test -run '^$$' -bench . -benchtime 2s -timeout 30m .
+	cd store/mongo && $(DB_ENV) WARDN_TEST_REQUIRE_ALL=1 go test -run '^$$' -bench . -benchtime 2s .
+	cd examples && go test -run '^$$' -bench . -benchtime 2s ./bank
 
 ## cover: run the library's tests and open a coverage report
 cover:

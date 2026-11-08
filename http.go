@@ -55,7 +55,7 @@ func HTTPStatus(err error) int {
 		return http.StatusBadRequest
 	case errors.Is(err, ErrRoleNotFound):
 		return http.StatusNotFound
-	case errors.Is(err, ErrConflict), errors.Is(err, ErrRoleNameTaken), errors.Is(err, ErrRoleInUse):
+	case errors.Is(err, ErrConflict), errors.Is(err, ErrRoleNameTaken), errors.Is(err, ErrRoleInUse), errors.Is(err, ErrAlreadyLinked):
 		return http.StatusConflict
 	}
 	return http.StatusInternalServerError

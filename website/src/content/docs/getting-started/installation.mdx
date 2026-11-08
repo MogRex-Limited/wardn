@@ -64,12 +64,12 @@ wardn detects which database it is talking to from the driver.
 
 ## The command-line tool
 
-The `wardn` CLI validates policy files and generates Go constants from them:
+The `wardn` CLI validates policy files and generates Go constants from them. Add it as a tool of your module, so it always matches the library version you use:
 
 ```bash
-go install github.com/MogRex-Limited/wardn/cmd/wardn@latest
-wardn check            # validate wardn.yaml
-wardn gen              # write perm/perm.go
+go get -tool github.com/MogRex-Limited/wardn/cmd/wardn
+go tool wardn check    # validate wardn.yaml
+go tool wardn gen      # write perm/perm.go
 ```
 
 Signed release binaries for Linux, macOS and Windows are also published with each release, with build provenance you can verify:

@@ -18,7 +18,7 @@ import (
 	"github.com/MogRex-Limited/wardn/storetest"
 )
 
-func connect(t *testing.T) *mongo.Client {
+func connect(t testing.TB) *mongo.Client {
 	t.Helper()
 	uri := os.Getenv("WARDN_TEST_MONGO_URI")
 	if uri == "" {
@@ -44,14 +44,14 @@ var (
 )
 
 // freshDB returns a database no other test uses; it is dropped afterwards.
-func freshDB(t *testing.T, client *mongo.Client) *mongo.Database {
+func freshDB(t testing.TB, client *mongo.Client) *mongo.Database {
 	t.Helper()
 	db := client.Database(fmt.Sprintf("wardn_%s_%d", runID, dbSeq.Add(1)))
 	t.Cleanup(func() { _ = db.Drop(context.Background()) })
 	return db
 }
 
-func migrated(t *testing.T, db *mongo.Database) *Store {
+func migrated(t testing.TB, db *mongo.Database) *Store {
 	t.Helper()
 	s := MustNew(db)
 	if err := s.Migrate(context.Background()); err != nil {
@@ -166,4 +166,11 @@ func TestTimeRounding(t *testing.T) {
 	if startMicros(time.Time{}) != nil || endMicros(time.Time{}) != nil || !fromMicros(nil).IsZero() {
 		t.Error("zero time is not null")
 	}
+}
+
+// BenchmarkMongo measures checks on a bank-sized dataset; see
+// storetest.Bench. Needs WARDN_TEST_MONGO_URI (make bench-all).
+func BenchmarkMongo(b *testing.B) {
+	client := connect(b)
+	storetest.Bench(b, func(b *testing.B) wardn.Store { return migrated(b, freshDB(b, client)) })
 }

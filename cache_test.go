@@ -68,7 +68,7 @@ func TestCacheChangesVisibleOnEveryInstanceImmediately(t *testing.T) {
 	// Moving a branch to another region in the same organisation.
 	assign(t, a, "w", "auditor", region1)
 	wantCan(t, b, "w", "report:export", branch1, true)
-	if err := a.Link(ctx, branch1, NewScope("region", "r1b")); err != nil {
+	if err := a.Move(ctx, branch1, NewScope("region", "r1b")); err != nil {
 		t.Fatal(err)
 	}
 	wantCan(t, b, "w", "report:export", branch1, false)
@@ -86,7 +86,7 @@ func TestCacheChangesVisibleOnEveryInstanceImmediately(t *testing.T) {
 	}
 	assign(t, a, "y", "auditor", r1c)
 	wantCan(t, b, "y", "report:export", b2, false) // cached for b2c under org1
-	if err := a.Link(ctx, b2, r1c); err != nil {
+	if err := a.Move(ctx, b2, r1c); err != nil {
 		t.Fatal(err)
 	}
 	wantCan(t, b, "y", "report:export", b2, true)
@@ -333,7 +333,7 @@ func TestProperty_CacheNeverStale(t *testing.T) {
 				child := nonGlobal[r.IntN(len(nonGlobal))]
 				want := map[string]string{"region": "organisation", "branch": "region"}[child.Type]
 				parent := parentsOf[want][r.IntN(len(parentsOf[want]))]
-				if err := w.Link(ctx, child, parent); err != nil {
+				if err := w.Move(ctx, child, parent); err != nil {
 					t.Fatal(err)
 				}
 				wd.links[child] = parent

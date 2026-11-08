@@ -15,6 +15,12 @@ err := w.Assign(ctx, "tolu", "loan_officer", lagos,
 	wardn.Until(time.Date(2026, 11, 13, 17, 0, 0, 0, lagosTZ)))
 ```
 
+When your code computes the window, use wardn's clock, so tests that move it move yours too:
+
+```go
+err := w.Assign(ctx, doctor, "doctor", cardiology, wardn.Until(w.Now().Add(72*time.Hour)))
+```
+
 - `From` alone: access starts later and never ends. `Until` alone: access starts now and ends later.
 - The window includes its start and excludes its end: at exactly 17:00 on the 13th, access is gone.
 - Assigning again replaces the window, for example to extend it, or to make it permanent by passing neither option.

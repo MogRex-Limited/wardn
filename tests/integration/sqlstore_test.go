@@ -26,14 +26,14 @@ import (
 type database struct {
 	name    string
 	dialect wardnsql.Dialect
-	open    func(t *testing.T) *sql.DB
+	open    func(t testing.TB) *sql.DB
 }
 
-func databases(t *testing.T) []database {
+func databases(t testing.TB) []database {
 	dbs := []database{{
 		name:    "sqlite",
 		dialect: wardnsql.SQLite,
-		open: func(t *testing.T) *sql.DB {
+		open: func(t testing.TB) *sql.DB {
 			path := filepath.Join(t.TempDir(), "wardn.db")
 			return openDB(t, "sqlite", "file:"+path+"?_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)")
 		},
@@ -60,7 +60,7 @@ func databases(t *testing.T) []database {
 			once sync.Once
 			db   *sql.DB
 		)
-		dbs = append(dbs, database{name: server.name, dialect: server.dialect, open: func(t *testing.T) *sql.DB {
+		dbs = append(dbs, database{name: server.name, dialect: server.dialect, open: func(t testing.TB) *sql.DB {
 			once.Do(func() { db = openDB(t, server.driver, dsn) }) // one pool per server
 			return db
 		}})
@@ -68,7 +68,7 @@ func databases(t *testing.T) []database {
 	return dbs
 }
 
-func openDB(t *testing.T, driver, dsn string) *sql.DB {
+func openDB(t testing.TB, driver, dsn string) *sql.DB {
 	t.Helper()
 	db, err := sql.Open(driver, dsn)
 	if err != nil {
@@ -93,7 +93,7 @@ func freshPrefix() string {
 	return fmt.Sprintf("t%s_%d_", runID, prefixN.Add(1))
 }
 
-func newStore(t *testing.T, db *sql.DB) *wardnsql.Store {
+func newStore(t testing.TB, db *sql.DB) *wardnsql.Store {
 	t.Helper()
 	s, err := wardnsql.New(db, wardnsql.WithTablePrefix(freshPrefix()))
 	if err != nil {

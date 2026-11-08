@@ -43,7 +43,7 @@ Holding a wildcard means holding **all** of it:
 
 ## Nothing leaks to the curious
 
-The management permission is checked **first**, before wardn looks anything up. Someone without it learns nothing: not whether a role exists, not its version, not its name. Editing or deleting a role you can't manage answers exactly as if the role didn't exist.
+Checks run in this order: the management permission, then whether the role exists and may be assigned at that scope (`ErrNotAssignable`), then the escalation guard (`ErrEscalation`). The management permission is checked **first**, before wardn looks anything up. Someone without it learns nothing: not whether a role exists, not its version, not its name. Editing or deleting a role you can't manage answers exactly as if the role didn't exist.
 
 ## Showing only what an admin can grant
 

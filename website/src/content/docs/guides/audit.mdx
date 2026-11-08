@@ -32,7 +32,9 @@ wardn.Config{
 | `assignment.revoked` | A role is revoked |
 | `assignment.expired` | The sweeper records that a time-limited assignment ended |
 | `role.created`, `role.updated`, `role.deleted` | A custom role changes (`Before` and `After` hold the role) |
-| `scope.linked` | A scope is linked to a parent (`Parent` holds it) |
+| `scope.linked` | A scope is linked to, or moved to, a parent (`Parent` holds it) |
+
+Assignment events also carry `StartsAt` and `ExpiresAt`, the time window. Repeating a change that changes nothing (assigning exactly what's already there, linking to the same parent) records nothing, so seeding the first administrator on every start keeps the trail clean.
 
 ## Nothing changes without a record
 

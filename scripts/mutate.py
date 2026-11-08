@@ -136,6 +136,8 @@ MUTANTS = [
      "if errors.As(err, &denied) {", "if errors.As(err, &denied) && false {"),
     ("manage.go", "times outside years 1-9999 accepted (review F6)",
      "if !tm.IsZero() && (tm.Year() < 1 || tm.Year() > 9999) {", "if false && !tm.IsZero() {"),
+    ("manage.go", "Link silently moves a scope to another parent (rehearsal, T27)",
+     "\tcase linked && !move:", "\tcase linked && !move && false:"),
     ("manage.go", "no limit on custom roles per owner (review F9)",
      "if len(own) >= maxRolesPerOwner {", "if len(own) >= maxRolesPerOwner*1000 {"),
     ("customrole.go", "look-alike characters are not folded in role names (review F7)",

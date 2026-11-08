@@ -16,6 +16,7 @@ Test for errors with `errors.Is`. `wardn.HTTPStatus(err)` gives the status code 
 | `ErrConflict` | The role was changed by someone else since it was read. | `409` |
 | `ErrRoleNameTaken` | A role with a name that reads the same already exists here. | `409` |
 | `ErrRoleInUse` | Deleting a role that is still assigned, without `Cascade()`. | `409` |
+| `ErrAlreadyLinked` | `Link` to a different parent than the scope already has; usually two tenants reusing an ID. Use `Move` to move on purpose. | `409` |
 | `ErrInvalidLink` | A link contradicts the scope tree, or stored data does. | `500` |
 | `ErrLinksExternal` | `Link` was called while `Config.ParentOf` is set. | `500` |
 | `ErrAuditRejected` | `OnChange` returned an error, so the change wasn't made. | `500` |

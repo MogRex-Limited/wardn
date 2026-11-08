@@ -86,7 +86,12 @@ r.Route("/branches/{branchID}", func(r chi.Router) {
 
 ## Temporary approver while the manager is on leave
 
-Bisi asks for a colleague to approve loans for one week. A `loan_approver` custom role, created once by head office, does it:
+Bisi asks for a colleague to approve loans for one week. A `loan_approver` custom role, created once by head office, does it. The guarded calls act as whoever is in the context:
+
+```go
+asAda := wardn.WithUser(ctx, "ada")   // in a real handler: the request's context, set by your auth middleware
+asBisi := wardn.WithUser(ctx, "bisi")
+```
 
 ```go
 // Head office, once:

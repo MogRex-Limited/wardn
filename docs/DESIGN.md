@@ -455,7 +455,9 @@ The YAML says *a branch belongs to a region*. At runtime wardn must also know *b
 w.Link(ctx, wardn.NewScope("branch", "b7"), wardn.NewScope("region", "r2"))
 ```
 
-This is simple. The cost is that the relationship also lives in the product's own tables. `Link` is plumbing called by backend code, not an end-user action, and must not be exposed directly through an API.
+This is simple. The cost is that the relationship also lives in the product's own tables.
+
+`Link` never changes an existing parent: linking to the same parent is a quiet no-op, and linking to a different one fails with `ErrAlreadyLinked` (409). A scope is identified by type and ID across all tenants, so two tenants that reuse an ID (a `cardiology` department in two hospitals) would otherwise move one tenant's scope under the other's administrators (threat model T27, found by the M8 usability rehearsal). Deliberate moves use `w.Move`. Scope IDs must be unique per type: primary keys, UUIDs, or composite IDs. `Link` is plumbing called by backend code, not an end-user action, and must not be exposed directly through an API.
 
 **B. The product resolves parents on demand.** The product supplies a function, and nothing is duplicated:
 
@@ -720,7 +722,16 @@ wardn.Config{
 - **`wardn.NewMemoryCache()` is correct only for a single instance**, because other instances can't see its counters. With more than one instance, use the shared Redis cache (`wardn/cache/redis`, which works with Redis and Valkey). It needs a namespace per application and a private server (threat model T24).
 - Any cache implementation must pass the `cachetest` conformance suite, which includes atomic counters under concurrent increments.
 
-Benchmarks ship with the library. Performance targets will be set by measuring the reference applications (M8) against realistic data sizes, not guessed.
+Benchmarks ship with the library (M8). `storetest.Bench` runs on a bank-shaped dataset of 4 organisations, 40 regions, 1,000 branches and about 20,000 assignments. It runs against any store, so every official store and any third-party store are measured the same way. `make bench` and `make bench-all` run it, together with whole HTTP requests through the bank reference application. The first measurements were taken on a 12-thread laptop with each database in Docker on the same machine. A check costs a few store round trips. The cost of evaluation itself is negligible:
+
+| | One check | 10 checks, one request | Parallel |
+|---|---|---|---|
+| Memory store | 2–5 µs | 26 µs | 0.8 µs |
+| SQLite | 0.1 ms | 0.14 ms | 0.05 ms |
+| PostgreSQL / MySQL / MariaDB / MongoDB | 0.7–1.1 ms | 0.7–1.2 ms | 0.2–0.3 ms |
+| Any database + memory cache | 25–45 µs | 90–135 µs | 10–12 µs |
+
+These confirm the design. The per-request memo makes extra checks in a request nearly free. The opt-in cache makes database-backed checks 20–30× faster. Authorization adds 4–7 µs to a request in the bank application. The cache is slower than the in-memory store, because hashing and sealing cost more than a map lookup, so it is only for database-backed stores. A finding for products: `database/sql`'s default of 2 idle connections more than halved parallel throughput on PostgreSQL. The stores guide tells products to size the pool. The full table is on the site's Performance page. No performance targets are set yet. They will come from the first product's real traffic.
 
 ---
 
@@ -795,7 +806,7 @@ This is tested formally before the announcement (M8): a developer who has never 
 ```
 github.com/MogRex-Limited/wardn            core: policy, evaluation, memory store, HTTP middleware, context
 ├── store/sql      (package wardnsql)      database/sql store
-├── storetest                              store conformance suite
+├── storetest                              store conformance suite and benchmarks
 ├── cachetest                              cache conformance suite
 ├── wardntest                              testing helpers
 ├── cmd/wardn                              CLI: check, gen
@@ -882,6 +893,7 @@ These numbers form the basis of the internal case and, later, the public story.
 | D12 | SQL Server | Not supported until a product needs it. The organisation's products use PostgreSQL and MySQL, which are fully supported and tested (with MariaDB and SQLite). | Untested database support is a liability in a security library. Doing SQL Server correctly needs 2019+ binary UTF-8 collations and a new key design; that work is justified only by a real user. |
 | D13 | Guard scope | The escalation guard is evaluated at the scope where the change happens. An actor's denies at *child* scopes do not limit what they may grant at the parent (security review F10). | Checking every descendant is unbounded. A deny constrains its holder, not what that holder may delegate above it. To restrict someone, put the deny on the roles of the people being restricted. |
 | D14 | Management errors reveal nothing | Without `wardn:roles.manage` at a role's owner, `UpdateRole` and `DeleteRole` answer exactly as for a missing role (`ErrRoleNotFound`, 404). Guarded deletes of missing roles are therefore not silent; `System()` deletes stay idempotent. | Existence, versions and nearby names are information an attacker can use (security review F5). |
+| D15 | Quiet no-op changes; `Link` vs `Move` | Repeating a change that changes nothing (same assignment and window, same parent) is not written or audited. `Link` refuses to re-parent; `Move` re-parents on purpose. | Found by the usability rehearsal: seeding on every start filled the audit trail, and a reused ID could silently move one tenant's scope into another. |
 
 ## 18. Open questions
 

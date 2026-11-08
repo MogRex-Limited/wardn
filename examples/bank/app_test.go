@@ -24,13 +24,14 @@ var start = time.Date(2026, 11, 9, 9, 0, 0, 0, time.UTC)
 //	bayo  teller            branch:lagos
 //	seun  regional_auditor  region:south
 type bank struct {
-	t     *testing.T
+	t     testing.TB
 	h     http.Handler
 	w     *wardn.Warden
 	clock *wardntest.Clock
+	app   *App
 }
 
-func newBank(t *testing.T) *bank {
+func newBank(t testing.TB) *bank {
 	t.Helper()
 	policy, err := Policy()
 	if err != nil {
@@ -38,7 +39,8 @@ func newBank(t *testing.T) *bank {
 	}
 	clock := wardntest.NewClock(start)
 	w := wardntest.NewFromPolicy(t, policy, wardntest.WithClock(clock))
-	b := &bank{t: t, h: (&App{w: w, bank: NewBank()}).Router(), w: w, clock: clock}
+	app := &App{w: w, bank: NewBank()}
+	b := &bank{t: t, h: app.Router(), w: w, clock: clock, app: app}
 
 	ctx := t.Context()
 	must := func(err error) {
@@ -178,7 +180,7 @@ func TestMakerChecker(t *testing.T) {
 	b.want("bisi", "POST", "/branches/lagos/loans/"+loan+"/approve", "", http.StatusForbidden) // business rule, after wardn
 }
 
-func TestConfusedDeputy(t *testing.T) {
+func TestThreat_T02_ConfusedDeputy(t *testing.T) {
 	b := newBank(t)
 	b.want("root", "PUT", "/branches/ibadan/staff/kemi/roles/branch_manager", "", http.StatusNoContent)
 	lagosLoan := b.newLoan("bayo")
@@ -200,3 +202,13 @@ func TestEveryRouteIsProtected(t *testing.T) {
 
 // TestGeneratedNamesAreCurrent fails if perm/perm.go is stale.
 func TestGeneratedNamesAreCurrent(t *testing.T) { demotest.GeneratedNamesAreCurrent(t) }
+
+// TestReusedRegionNameIsRefused: Globex trying to open a branch under a
+// region ID Acme already uses gets a conflict, instead of quietly moving
+// Acme's region (and its branches) under Globex's administrators.
+func TestReusedRegionNameIsRefused(t *testing.T) {
+	b := newBank(t)
+	b.want("root", "POST", "/orgs/globex/regions/south/branches", `{"id":"kano"}`, http.StatusConflict)
+	b.want("ada", "GET", "/branches/lagos/loans", "", http.StatusOK)                                  // Acme's region is untouched
+	b.want("root", "POST", "/orgs/acme/regions/south/branches", `{"id":"lagos"}`, http.StatusCreated) // re-opening is harmless
+}

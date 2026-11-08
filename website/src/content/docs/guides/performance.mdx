@@ -1,0 +1,58 @@
+---
+title: Performance
+description: What a permission check costs on each store, measured on a bank-sized dataset, and how to make it cheaper.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+A check costs a few store reads: the user's assignments along the scope's chain, the scope's parents, and any custom roles involved. Evaluation itself takes microseconds, so the cost of a check is mostly the round trips to your database.
+
+## Measured
+
+The dataset is a bank shaped like the [reference application](/recipes/bank/): 4 organisations, 40 regions, 1,000 branches and about 20,000 assignments. Each number is a whole `w.Can` call, as your code makes it.
+
+These are times per check on an AMD Ryzen 5 PRO 5650U (12 threads), with each database running in Docker on the same machine. A database on a real network adds its own latency to every round trip.
+
+| Store | One check | Custom role | 10 checks in one request | Parallel (12 threads) |
+|---|---|---|---|---|
+| Memory | 2–5 µs | 5 µs | 26 µs | 0.8 µs |
+| SQLite | 100–110 µs | 210 µs | 140 µs | 53 µs |
+| PostgreSQL | 0.66 ms | 1.25 ms | 0.68 ms | 0.20 ms |
+| MySQL | 0.95 ms | 2.2 ms | 1.1 ms | 0.32 ms |
+| MariaDB | 1.1 ms | 2.2 ms | 1.1 ms | 0.30 ms |
+| MongoDB | 1.0 ms | 1.5 ms | 1.2 ms | 0.31 ms |
+| Any database + memory cache | 25–45 µs | 40–110 µs | 90–135 µs | 10–12 µs |
+
+A denied check costs the same as an allowed one. A role inherited from the organisation costs the same as one at the branch. Assigning a role takes 0.5–0.9 ms on the database servers.
+
+In the bank application, a whole HTTP request with authorization took 13–18 µs. Without authorization it took 10 µs. That run used wardn's in-memory store.
+
+## What this means for your service
+
+- **Several checks in one request cost about the same as one.** wardn remembers what it read for the rest of the request. The HTTP middleware does this for you; elsewhere, use `w.WithMemo(ctx)`. On PostgreSQL, ten checks took 0.68 ms against 0.66 ms for one.
+- **With a database, the cache makes checks 20–30 times faster.** Turn it on when checks show up in your latency. Revocations still apply on the next request ([Caching across instances](/guides/caching/)). The Redis cache adds a network round trip per read, so it lands between these two rows; it is not measured here.
+- **Don't cache in front of the memory store.** There the cache is slower than the store: about 20 µs against 3 µs, because entries are hashed and signed.
+- **Custom roles add one read.** That read is cached like the others.
+
+<Aside type="caution" title="Size your connection pool">
+Go's `database/sql` keeps only 2 idle connections by default. Under parallel load it then keeps opening new connections, which is expensive on PostgreSQL. With the default pool, parallel checks on PostgreSQL took 0.48 ms each; with `db.SetMaxIdleConns(32)` they took 0.20 ms. Set the idle pool to about the number of requests you serve at once.
+</Aside>
+
+## Measure it yourself
+
+```sh
+make bench      # memory store, SQLite, and whole requests in the bank app
+make bench-all  # also PostgreSQL, MySQL, MariaDB and MongoDB, started in Docker
+```
+
+The same benchmark suite runs against any store, including [one you write](/reference/writing-a-store/):
+
+```go
+func BenchmarkMyStore(b *testing.B) {
+	storetest.Bench(b, func(b *testing.B) wardn.Store {
+		return mystore.New(freshDatabase(b)) // a new, empty store
+	})
+}
+```
+
+Run it with `go test -run '^$' -bench .` against a database like the one you run in production.

@@ -30,7 +30,9 @@ In wardn, tenants are simply the top level of your scope tree. Isolation is not 
    }
    ```
 
-   Moving a branch is the same call with a new parent. Inheritance follows at once.
+   Calling `Link` again with the same parent does nothing, so it's safe on every start. To move a branch to another organisation, call `w.Move` instead; inheritance follows at once.
+
+   <Aside type="caution">Scope IDs must be unique per type across **all** tenants. Use primary keys or composite IDs (`acme/lagos`). See [Scope IDs must be unique per type](/concepts/scopes/#scope-ids-must-be-unique-per-type).</Aside>
 
 3. **Assign at the right level**
 
@@ -80,7 +82,10 @@ wardn.Config{
 
 ## The confused-deputy trap
 
-A URL says which tenant a request *claims* to act in. A record says which tenant it *belongs* to. They aren't always the same:
+A URL says which tenant a request *claims* to act in. A record says which tenant it *belongs* to. They aren't always the same. There are two safe patterns:
+
+1. **Load records only through queries filtered by the URL's scope** (`WHERE branch_id = ? AND id = ?`). A record from another tenant simply isn't found. This is the simplest, and the usual choice.
+2. **Check against the record's own scope**, when the record is loaded by ID alone:
 
 ```go
 // POST /orgs/acme/loans/987/approve, but loan 987 belongs to globex.
@@ -95,7 +100,7 @@ func (h *Handlers) approveLoan(rw http.ResponseWriter, r *http.Request) {
 }
 ```
 
-Whenever a handler acts on a specific record, check against the record's own scope, or load records only through queries filtered by the scope from the URL.
+In both patterns the permission check comes first, as the next note explains.
 
 <Aside type="caution" title="Authorize first, then look up">
 Check permissions **before** looking a record up. If a handler answers `404` for records that don't exist and `403` for records that do, anyone can learn which IDs exist, even in another tenant. With the check first, every caller without the permission gets the same `403`. The reference applications' route audit caught exactly this mistake in an early version of the SaaS example.

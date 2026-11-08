@@ -61,7 +61,7 @@ func TestProjectLevelAccess(t *testing.T) {
 	c.Want("con", "GET", "/workspaces/acme/projects", "", http.StatusForbidden) // project-level only
 }
 
-func TestConfusedDeputy(t *testing.T) {
+func TestThreat_T02_ConfusedDeputy(t *testing.T) {
 	c := newSaaS(t)
 	// gina owns globex; p-42 belongs to acme. Through globex's URL she is
 	// refused, exactly as for a project that does not exist, so she can't

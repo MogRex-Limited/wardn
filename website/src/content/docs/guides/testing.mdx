@@ -13,7 +13,16 @@ import "github.com/MogRex-Limited/wardn/wardntest"
 w := wardntest.New(t, "../wardn.yaml") // fails the test if the policy is invalid
 ```
 
-Options: `wardntest.WithClock(clock)` for time travel and `wardntest.WithStore(store)` for a store you've prepared.
+The path is relative to the test's package directory, so a test in a subpackage uses `"../wardn.yaml"`.
+
+Options: `wardntest.WithClock(clock)` for time travel and `wardntest.WithStore(store)` for a store you've prepared. An option is just a `func(*wardn.Config)`, so you can set anything else too, for example to check your audit trail:
+
+```go
+var events []wardn.Event
+w := wardntest.New(t, "../wardn.yaml", func(c *wardn.Config) {
+	c.OnChange = func(_ context.Context, e wardn.Event) error { events = append(events, e); return nil }
+})
+```
 
 ## Requests from a user with roles
 
@@ -24,6 +33,8 @@ req = wardntest.AsRole(t, w, req, "auditor") // a fresh user holding auditor glo
 lagos := wardn.NewScope("branch", "lagos")
 req = wardntest.AsRoleIn(t, w, req, lagos, "teller") // roles held at a scope
 ```
+
+`AsRole` and `AsRoleIn` put the user directly in the request's context, as if your authentication middleware had run. If your router includes that middleware, make sure it only sets a user when a token is present, as in the [quick start](/getting-started/quick-start/), so it doesn't erase the test's user.
 
 For code that isn't HTTP, get a user ID instead:
 
@@ -58,7 +69,7 @@ func TestEveryRouteIsProtected(t *testing.T) {
 
 	var routes []wardntest.Route
 	param := regexp.MustCompile(`\{[^}]+\}`)
-	chi.Walk(router, func(method, pattern string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+	chi.Walk(router.(chi.Routes), func(method, pattern string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
 		routes = append(routes, wardntest.Route{Method: method, Path: param.ReplaceAllString(pattern, "x")})
 		return nil
 	})

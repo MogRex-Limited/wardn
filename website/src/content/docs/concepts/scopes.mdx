@@ -83,6 +83,24 @@ wardn.Config{
 
 Either way, wardn checks that the parent has the type the policy declares.
 
+To move a branch to another region later, call `w.Move(ctx, branch, newRegion)`. `Link` never changes an existing parent: linking to the same parent again does nothing, and linking to a different one fails with `ErrAlreadyLinked`.
+
+## Scope IDs must be unique per type
+
+A scope is identified by its type and ID alone, across all tenants. If two hospitals each call a department `cardiology`, wardn sees **one** scope, `department:cardiology`.
+
+- **Use IDs that are unique across tenants**: your database's primary keys or UUIDs, or composite IDs such as `lagos-general/cardiology`.
+- **wardn refuses the dangerous case.** Linking a second hospital's `cardiology` would move the first hospital's department under the second hospital's administrators, so it fails with `ErrAlreadyLinked` instead.
+
+With composite IDs, give `ScopeFrom` a function that builds the ID from the URL:
+
+```go
+departmentID := func(r *http.Request) string {
+	return r.PathValue("hospitalID") + "/" + r.PathValue("deptID")
+}
+r.Use(w.ScopeFrom("department", departmentID))
+```
+
 <Aside type="caution">`Link` is backend plumbing. Never expose it directly to end users: whoever controls links controls inheritance.</Aside>
 
 ## Safety rules
