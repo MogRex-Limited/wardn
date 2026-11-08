@@ -16,7 +16,7 @@ const migrationTimeout = 2 * time.Minute
 // File nor Policy.
 const DefaultPolicyFile = "wardn.yaml"
 
-// Config configures a Warden. Every field is optional.
+// Config configures a Warden.
 type Config struct {
 	// File is the path of a YAML policy file. Default: "wardn.yaml".
 	File string
