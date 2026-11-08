@@ -32,6 +32,15 @@ updates:
     labels: [dependencies]
 
   - package-ecosystem: gomod
+    directory: /store/pgx
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+
+  - package-ecosystem: gomod
     directory: /cache/redis
     schedule:
       interval: weekly

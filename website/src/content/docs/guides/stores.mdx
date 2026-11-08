@@ -10,6 +10,7 @@ A store saves wardn's runtime data: assignments, custom roles and scope links. A
 | Store | Use for | Package |
 |---|---|---|
 | **SQL** | PostgreSQL 13+, MySQL 8.0+, MariaDB 10.6+, SQLite 3.24+ | `github.com/MogRex-Limited/wardn/store/sql` (`wardnsql`) |
+| **pgx** *(v1.2)* | PostgreSQL 13+, in applications built on pgx rather than `database/sql` | `github.com/MogRex-Limited/wardn/store/pgx` (`wardnpgx`) |
 | **MongoDB** | MongoDB 6.0+, standalone or replica set | `github.com/MogRex-Limited/wardn/store/mongo` (`wardnmongo`) |
 | **Memory** | Tests, demos, and examples (lost on restart) | `wardn.NewMemoryStore()`, the default |
 
@@ -26,6 +27,21 @@ w := wardn.MustNew(wardn.Config{
 Options: `wardnsql.WithTablePrefix("authz_")` (default `wardn_`) and `wardnsql.WithDialect(wardnsql.Postgres)` if detection can't tell.
 
 Size the connection pool for your concurrency, for example `db.SetMaxIdleConns(32)`. The default keeps only 2 idle connections, which more than halved parallel check throughput on PostgreSQL ([Performance](/guides/performance/)).
+</TabItem>
+<TabItem label="pgx">
+```go
+pool, _ := pgxpool.New(ctx, dsn)
+w := wardn.MustNew(wardn.Config{
+	File:  "wardn.yaml",
+	Store: wardnpgx.MustNew(pool),
+})
+```
+
+Option: `wardnpgx.WithTablePrefix("authz_")` (default `wardn_`).
+
+Use it when your application already talks to PostgreSQL through pgx: wardn shares your pool, and `store.WithTx(ctx, tx)` takes your `pgx.Tx`, so access changes commit with your own writes ([changes in your own transaction](/guides/transactions/)).
+
+It creates **exactly the same tables** as the SQL store on PostgreSQL: names, columns, indexes, schema versions and migration lock. You can switch between the two, or run both against one database, with no data migration.
 </TabItem>
 <TabItem label="MongoDB">
 ```go

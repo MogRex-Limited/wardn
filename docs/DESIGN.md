@@ -585,6 +585,7 @@ Design choices that keep adapters simple:
 | `wardn.NewMemoryStore()` | In-process (tests, demos); the default when no store is configured | core package (it is the default, so it cannot live in a sub-package that imports the core) |
 | `wardn/store/sql` (package `wardnsql`) | PostgreSQL 13+, MySQL 8.0+, MariaDB 10.6+, SQLite 3.24+, through `database/sql`; the product brings its own driver, and the dialect is detected from it | core (no driver dependency) |
 | SQL Server | **Not supported** (D12): no product uses it. If one ever does, it needs SQL Server 2019+ (UTF-8 binary collations, for exact ID comparison with index use) and a key design within the 900-byte key limit. | core |
+| `wardn/store/pgx` (package `wardnpgx`) | PostgreSQL 13+ through pgx (`pgxpool`, `pgx.Tx`), for applications built on pgx. The same tables, schema versions and migration lock as `store/sql` on PostgreSQL (D19) | separate module (v1.2) |
 | `wardn/store/mongo` (package `wardnmongo`) | MongoDB 6.0+, standalone or replica set; needs no transactions (every write is one document) | separate module |
 
 Separate Go modules mean a SQL user never downloads the MongoDB driver and vice versa. The core module depends only on the standard library and a YAML parser.
@@ -814,6 +815,7 @@ github.com/MogRex-Limited/wardn            core: policy, evaluation, memory stor
 
 Separate modules (own go.mod):
 ├── store/mongo    (package wardnmongo)    MongoDB store
+├── store/pgx      (package wardnpgx)      PostgreSQL store for pgx applications
 └── cache/redis    (package wardnredis)    shared cross-request cache (Redis, Valkey)
 
 The in-memory cache (`wardn.NewMemoryCache`) lives in the core, like the memory store.
@@ -897,6 +899,7 @@ These numbers form the basis of the internal case and, later, the public story.
 | D16 | External audit | No external security audit for v1.0: the maintainers decided against one (2026-11-08). | v1.0 rests on the internal security review (docs/SECURITY_REVIEW.md), the API review before the freeze, a `TestThreat_` test for every threat, property tests against a reference implementation, fault injection, fuzzing and mutation testing. The review brief stays in SECURITY_REVIEW.md §5 for any later reviewer. |
 | D17 | Changes inside the application's transaction (v1.1) | The transaction travels in the context (`wardnsql.Store.WithTx`), keyed per store; `Warden.Transaction` returns a function to call after the commit. Stores opt in through `TxStore`. The SQL store writes in savepoints. Inside the transaction the cache and memo are bypassed. A change with only one of the two fails with `ErrNoTransaction`. | Found by the first product adoption: membership changes there commit together with audit and outbox rows, and the access change must too. Passing the transaction in the context keeps every method signature unchanged (v1 compatibility). The cache can't know when a transaction commits, so the application tells it; refusing a half-configured change turns a silent stale cache into an error in development. |
 | D18 | Checking many scopes (v1.1) | `CheckEach` / `CanEach`: one permission at up to 1,000 scopes, reading the union of their chains in batches of 32 scopes. The whole call fails closed on any error. Decisions are identical to `Check` (property-tested). | Filtering a list one `Can` at a time costs a few queries per item. One permission at many scopes covers list filtering; many permissions at one scope is already `PermissionsOf`. |
+| D19 | A pgx store (v1.2) | `store/pgx`, a separate module, PostgreSQL only, taking a `pgx.Tx` through `WithTx`. It creates exactly the SQL store's PostgreSQL schema (same names, types, indexes, versions and advisory-lock key), so the two are interchangeable on one database; a test compares the two schemas and shares data between them. Writes inside an application transaction are pgx savepoints. | Found by the first adoption: Supportaka, like most of the organisation's Go services, runs every transaction through pgx, and a `*sql.Tx` cannot be made from a `pgx.Tx`. A shared schema means no team ever migrates data to change stores. A separate module keeps pgx out of the core. |
 
 ## 18. Open questions
 

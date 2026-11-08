@@ -7,7 +7,7 @@ import { Aside } from '@astrojs/starlight/components';
 
 Adding a member to an organisation usually writes several things: your own `members` row, an audit record, perhaps an outbox message for a welcome email, and wardn's role assignment. They should all happen, or none of them should.
 
-With the SQL store, wardn can write inside **your** transaction:
+With the SQL store (`database/sql`) or the pgx store, wardn can write inside **your** transaction. With the SQL store:
 
 ```go
 tx, err := db.BeginTx(ctx, nil)
@@ -85,7 +85,27 @@ OnChange: func(ctx context.Context, e wardn.Event) error {
 
 ## Using pgx
 
-wardn's SQL store uses `database/sql`. If your application uses pgx directly, open a `*sql.DB` over the same pool with `stdlib.OpenDBFromPool(pool)` (package `github.com/jackc/pgx/v5/stdlib`). A transaction can then be shared:
+If your application uses pgx directly, use the pgx store (`wardn/store/pgx`, v1.2). It takes your `pgx.Tx` as it is, so your existing transaction helpers just pass it through:
+
+```go
+store := wardnpgx.MustNew(pool) // your *pgxpool.Pool
+
+wctx, ended := w.Transaction(ctx)
+err := pgx.BeginFunc(wctx, pool, func(tx pgx.Tx) error {
+	ctx := store.WithTx(wctx, tx)
+	if _, err := tx.Exec(ctx, `INSERT INTO members (org_id, user_id) VALUES ($1, $2)`, orgID, userID); err != nil {
+		return err
+	}
+	return w.Assign(ctx, userID, "agent", product)
+})
+_ = ended(ctx) // after BeginFunc has committed or rolled back
+```
+
+sqlc's generated `Queries.WithTx(tx)` works on the same `tx`. wardn's writes become pgx savepoints (`tx.Begin`), so a failed wardn write never aborts your transaction.
+
+The pgx store uses the same tables as the SQL store, so you can adopt it without moving any data.
+
+**Keeping `database/sql` for wardn:** open a `*sql.DB` over your pool with `stdlib.OpenDBFromPool(pool)` and share one connection:
 
 ```go
 conn, err := sqlDB.Conn(ctx)          // one connection from the shared pool
@@ -97,8 +117,6 @@ err = conn.Raw(func(dc any) error {   // the same connection, as pgx
 })
 ```
 
-Both run on one database connection, and PostgreSQL transactions belong to the connection, so the pgx queries and wardn's writes commit together.
-
 ## Other stores
 
-Transactions are available in the SQL store (PostgreSQL, MySQL, MariaDB, SQLite). A store opts in by implementing `wardn.TxStore`. The MongoDB store doesn't yet.
+Transactions are available in the SQL store (PostgreSQL, MySQL, MariaDB, SQLite) and the pgx store (PostgreSQL). A store opts in by implementing `wardn.TxStore`. The MongoDB store doesn't yet.

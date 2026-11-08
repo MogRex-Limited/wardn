@@ -1,0 +1,7 @@
+# Direct dependencies of the pgx PostgreSQL store module (store/pgx).
+# Users who choose this store download these; everyone else never does.
+#
+# Format: <module path>  # <why it is needed>
+
+github.com/MogRex-Limited/wardn   # The core library.
+github.com/jackc/pgx/v5           # The PostgreSQL driver and toolkit the applications using this store already use.

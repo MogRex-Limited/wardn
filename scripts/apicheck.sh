@@ -3,7 +3,8 @@
 # that is incompatible with its latest v1 release (docs/STABILITY.md).
 #
 # Each module is compared with its own latest release tag: v1.x.y for the
-# core, store/mongo/v1.x.y and cache/redis/v1.x.y for the sub-modules.
+# core, store/mongo/v1.x.y, store/pgx/v1.x.y and cache/redis/v1.x.y for the
+# sub-modules.
 # Before a module's first v1 release there is nothing to compare, and it
 # is skipped. API_BASE=<git ref> compares every module with that ref
 # instead (for example API_BASE=main, to preview what a branch breaks).
@@ -15,7 +16,7 @@ APIDIFF_VERSION="v0.0.0-20261011100332-faecfb24eb49" # golang.org/x/exp
 APIDIFF="go run golang.org/x/exp/cmd/apidiff@${APIDIFF_VERSION}"
 
 # Published modules. tests/integration and examples are not published.
-MODULES=(. store/mongo cache/redis)
+MODULES=(. store/mongo store/pgx cache/redis)
 
 root=$(pwd)
 work=$(mktemp -d)
@@ -77,7 +78,7 @@ done
 # fall behind the latest core release.
 latest_core=$(git tag --list "v1.*" --sort=-v:refname | head -n 1)
 if [ -n "$latest_core" ]; then
-	for m in store/mongo cache/redis; do
+	for m in store/mongo store/pgx cache/redis; do
 		required=$(cd "$root/$m" && go list -m -f '{{.Version}}' github.com/MogRex-Limited/wardn)
 		lowest=$(printf '%s\n%s\n' "$required" "$latest_core" | sort -V | head -n 1)
 		if [ "$required" != "$latest_core" ] && [ "$lowest" = "$required" ]; then

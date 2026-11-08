@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Date** | 2026-11-08 |
-| **Scope** | The core library, `store/sql` (PostgreSQL, MySQL, MariaDB, SQLite), `store/mongo`, `cache/redis`, the HTTP middleware, the `wardn` CLI |
+| **Scope** | The core library, `store/sql` (PostgreSQL, MySQL, MariaDB, SQLite), `store/mongo`, `store/pgx` (v1.2; added after the review, same tests), `cache/redis`, the HTTP middleware, the `wardn` CLI |
 | **Result** | 1 high, 4 medium and 6 low findings, plus 1 found by fuzzing. All are fixed and protected by regression tests, except two low-severity items accepted as design decisions (§4). |
 | **For** | Engineering leadership, and any later reviewer as their starting point (§5) |
 
@@ -98,7 +98,7 @@ wardn has no external audit (DESIGN.md D16). This brief is for anyone who review
   1. `manage.go` (the escalation guard: `guard`, `holds`, `covers`, and every management path);
   2. `check.go` (`grants`, `evaluate`, `chain`);
   3. `cache.go`, `events.go` and `tx.go` (invalidation ordering, sealing, and changes inside an application's transaction);
-  4. `store/sql/roles.go`, `store/sql/tx.go` and `store/mongo/store.go` (atomicity, savepoints).
+  4. `store/sql/roles.go`, `store/sql/tx.go`, `store/pgx/tx.go`, `store/pgx/roles.go` and `store/mongo/store.go` (atomicity, savepoints).
 - **Running everything:** `make check` runs all gates on all modules. `make integration` runs everything against real PostgreSQL, MySQL, MariaDB, MongoDB and Redis in Docker. `make mutation` and `make fuzz FUZZTIME=5m` run the slower checks.
 - **Questions we would most like answered:**
   - Is there any sequence of guarded calls after which someone holds a permission no actor in that sequence held?

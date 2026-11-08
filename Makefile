@@ -5,6 +5,7 @@
 # choose them:
 #   .                  the library (standard library + YAML only)
 #   store/mongo        MongoDB store
+#   store/pgx          PostgreSQL store for applications using pgx
 #   cache/redis        Redis cache
 #   tests/integration  SQL and HTTP tests against real databases and chi
 #   examples           reference applications (bank, saas, simple, school)
@@ -16,7 +17,7 @@ GOVULNCHECK_VERSION   := v1.9.0
 GOLANGCI_LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 GOVULNCHECK   := go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 
-MODULES     := . store/mongo cache/redis tests/integration examples
+MODULES     := . store/mongo store/pgx cache/redis tests/integration examples
 INTEGRATION := tests/integration
 COMPOSE     := docker compose -f $(INTEGRATION)/compose.yaml
 
@@ -75,6 +76,7 @@ bench-all: db-up
 	go test -run '^$$' -bench . -benchtime 2s .
 	cd $(INTEGRATION) && $(DB_ENV) WARDN_TEST_REQUIRE_ALL=1 go test -run '^$$' -bench . -benchtime 2s -timeout 30m .
 	cd store/mongo && $(DB_ENV) WARDN_TEST_REQUIRE_ALL=1 go test -run '^$$' -bench . -benchtime 2s .
+	cd store/pgx && $(DB_ENV) WARDN_TEST_REQUIRE_ALL=1 go test -run '^$$' -bench . -benchtime 2s .
 	cd examples && go test -run '^$$' -bench . -benchtime 2s ./bank
 
 ## cover: run the library's tests and open a coverage report

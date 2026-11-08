@@ -5,7 +5,7 @@ go 1.26.0
 toolchain go1.27.3
 
 require (
-	github.com/MogRex-Limited/wardn v0.0.0
+	github.com/MogRex-Limited/wardn v1.1.0
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/jackc/pgx/v5 v5.12.0
@@ -14,6 +14,7 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
+	github.com/MogRex-Limited/wardn/store/pgx v0.0.0
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
@@ -32,3 +33,5 @@ require (
 )
 
 replace github.com/MogRex-Limited/wardn => ../..
+
+replace github.com/MogRex-Limited/wardn/store/pgx => ../../store/pgx

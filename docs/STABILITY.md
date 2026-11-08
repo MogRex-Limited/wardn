@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Applies from** | v1.0.0 |
-| **Applies to** | Every v1.x.y release of `github.com/MogRex-Limited/wardn`, `.../store/mongo` and `.../cache/redis` |
+| **Applies to** | Every v1.x.y release of `github.com/MogRex-Limited/wardn`, `.../store/mongo`, `.../store/pgx` (from v1.2.0) and `.../cache/redis` |
 | **Enforced by** | `make api` (`scripts/apicheck.sh`) and `stability_test.go`, in `make check` and CI |
 
 An authorization library sits under every route of every product that uses it. Upgrading within v1 must be safe and boring: run `go get -u`, run your tests, and deploy. A change that would break code, data or behaviour that relies on v1.0.0 waits for v2. We expect never to need v2.
@@ -14,7 +14,7 @@ An authorization library sits under every route of every product that uses it. U
 
 | Area | Promise | Checked by |
 |---|---|---|
-| **Go API** | Code that compiles against v1.0.0 compiles against every later v1 release. This covers the packages `wardn`, `wardntest`, `storetest`, `cachetest`, `store/sql` (`wardnsql`), `store/mongo` (`wardnmongo`) and `cache/redis` (`wardnredis`). | `make api`: every pull request is compared with the latest v1 tag of each module, using `apidiff` |
+| **Go API** | Code that compiles against v1.0.0 compiles against every later v1 release. This covers the packages `wardn`, `wardntest`, `storetest`, `cachetest`, `store/sql` (`wardnsql`), `store/mongo` (`wardnmongo`), `store/pgx` (`wardnpgx`) and `cache/redis` (`wardnredis`). | `make api`: every pull request is compared with the latest v1 tag of each module, using `apidiff` |
 | **Decisions** | The evaluation rules (DESIGN.md §5) do not change. A check that a v1.0.0 policy and set of assignments allows stays allowed, and a denied one stays denied. | The rule tests, the property test against the reference implementation, and the mutation suite |
 | **Policy files** | A `version: 1` policy file that loads in a v1 release loads, and means the same, in every later v1 release. New optional keys may be added. A file that uses them won't load in older releases. | Policy tests and fuzzing |
 | **Names other systems keep** | JSON field names of public types (`Event`, `Decision`, `Assignment`, `CustomRole`, `RoleInfo`, `RoleSpec`, `Permission`, `Scope`); audit event types (`assignment.created`…); built-in permission names (`wardn:roles.assign`, `wardn:roles.manage`); the sentinel errors and their `HTTPStatus` codes; the generic default error responses. | `stability_test.go` |
@@ -51,4 +51,4 @@ Nothing public is removed in v1. Anything that should no longer be used gets a `
 - When `stability_test.go` fails, restore the old value. Changing the expected value in the test is a breaking change.
 - When something cached changes shape, increase `cacheFormat` in the same pull request.
 - Migrations within v1 only add. A migration that renames or drops waits for v2. If the old structure must go, add the new one alongside it and keep reading both.
-- Sub-modules share the core's major version: `store/mongo/v1.x.y` and `cache/redis/v1.x.y` require a v1 core.
+- Sub-modules share the core's major version: `store/mongo/v1.x.y`, `store/pgx/v1.x.y` and `cache/redis/v1.x.y` require a v1 core.
