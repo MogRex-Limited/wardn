@@ -10,16 +10,7 @@ import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 - **Go 1.26 or newer.** wardn supports the two most recent Go releases, matching Go's own security-support policy.
 - **A database** for production: PostgreSQL 13+, MySQL 8.0+, MariaDB 10.6+, SQLite 3.24+ or MongoDB 6.0+. Tests and demos can use the built-in in-memory store.
 
-## Access while the repository is private
-
-wardn is an internal library until it is open-sourced, so Go must be told to fetch it directly from GitHub with your credentials. Do this once per machine:
-
-```bash
-go env -w GOPRIVATE=github.com/MogRex-Limited/*
-git config --global url."git@github.com:MogRex-Limited/".insteadOf "https://github.com/MogRex-Limited/"
-```
-
-The second line makes Go use your SSH key. In CI, provide a read-only deploy key or token instead.
+wardn is open source (Apache-2.0) and fetched through the public Go module proxy like any other module: no credentials or `GOPRIVATE` setting are needed. If you set `GOPRIVATE=github.com/MogRex-Limited/*` while it was private, you can remove it for wardn.
 
 ## Packages
 

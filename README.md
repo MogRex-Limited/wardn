@@ -10,10 +10,12 @@ Define your roles, permissions and tenancy in one file. wardn stores them, check
 stops privilege escalation and keeps an audit trail, inside your app, on the database you already run.
 
 [![CI](https://github.com/MogRex-Limited/wardn/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MogRex-Limited/wardn/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v1.0.0-0f766e)](CHANGELOG.md)
+[![Release](https://img.shields.io/github/v/tag/MogRex-Limited/wardn?filter=v*&label=release&color=0f766e)](CHANGELOG.md)
+[![Go Reference](https://pkg.go.dev/badge/github.com/MogRex-Limited/wardn.svg)](https://pkg.go.dev/github.com/MogRex-Limited/wardn)
+[![License](https://img.shields.io/badge/license-Apache--2.0-115e59)](LICENSE)
 [![Go](https://img.shields.io/badge/go-1.26%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/dl/)
 [![Stability](https://img.shields.io/badge/API-stable%20v1-115e59)](docs/STABILITY.md)
-[![Threats tested](https://img.shields.io/badge/threats%20tested-27%2F27-115e59)](docs/THREAT_MODEL.md)
+[![Threats tested](https://img.shields.io/badge/threats%20tested-28%2F28-115e59)](docs/THREAT_MODEL.md)
 
 [Documentation](#documentation) · [Quick start](#quick-start) · [Examples](#examples) · [Security](#security) · [Changelog](CHANGELOG.md)
 
@@ -54,11 +56,8 @@ organisation:acme                     ada  → org_admin      (everything in Acm
 **1. Install** (Go 1.26 or newer):
 
 ```bash
-go get github.com/MogRex-Limited/wardn@v1.0.0
+go get github.com/MogRex-Limited/wardn@latest
 ```
-
-> [!NOTE]
-> The repository is private for now. Run `go env -w GOPRIVATE=github.com/MogRex-Limited/*` once, with Git access to the organisation. The [installation guide](website/src/content/docs/getting-started/installation.mdx) has the details.
 
 **2. Describe your product** in `wardn.yaml`:
 
@@ -242,4 +241,6 @@ wardn was designed and built by **Abakpa Dominic** ([@DT-GAMER](https://github.c
 
 ## License
 
-wardn is internal to MogRex Limited.
+wardn is open source under the [Apache License 2.0](LICENSE). Copyright 2026 MogRex Limited.
+
+Contributions are welcome under the same licence: see [CONTRIBUTING.md](CONTRIBUTING.md). Report security issues privately, as [SECURITY.md](SECURITY.md) describes, never in a public issue.

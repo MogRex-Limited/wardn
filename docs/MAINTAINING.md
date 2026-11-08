@@ -41,17 +41,11 @@ Some protections in the [threat model](THREAT_MODEL.md) (S02–S05) cannot be en
 - [ ] Secret scanning and push protection: enabled
 - [ ] CodeQL: see below.
 
-### CodeQL (currently disabled)
+### CodeQL
 
-CodeQL code scanning on a private repository requires paid GitHub Advanced Security (Code Security), so the CodeQL workflow has been removed for now. `gosec`, `staticcheck` and `govulncheck` still run on every change.
+`.github/workflows/codeql.yml` runs CodeQL (the `security-extended` queries) on every pull request, on `main`, and weekly, over every published module. It is free on a public repository. Findings appear in the repository's **Security** tab. Once it has run on `main`, add `Analyze (Go)` to the required status checks.
 
-Restore it when the repository goes public (M10, where it is free), or earlier if the organisation enables Code Security. The removed workflow is in git history at commit `3fa1d16`:
-
-```bash
-git show 3fa1d16:.github/workflows/codeql.yml > .github/workflows/codeql.yml
-```
-
-Update the pinned action SHAs before re-enabling it.
+`github/codeql-action` is allowed by "GitHub-owned actions" in the Actions settings. Keep its SHA pin current, like every other action.
 
 ### Database images
 
@@ -117,7 +111,7 @@ Anyone can verify a downloaded binary with `gh attestation verify <file> --repo 
 
 The site in `website/` is built with Astro Starlight. CI builds it on every change and fails on any broken internal link or vulnerable dependency (`npm audit`). Dependabot proposes npm and container-image updates weekly.
 
-Until the open-source milestone, host it **internally only**: build the container (`docker build -t wardn-docs website/`) and run it on an internal host or behind company sign-in. It serves static files only, as a non-root user, with strict security headers.
+The repository is public, so the site can be public too: build the container (`docker build -t wardn-docs website/`) and run it anywhere. It serves static files only, as a non-root user, with strict security headers.
 
 ### Deep checks
 

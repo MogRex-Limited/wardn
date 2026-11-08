@@ -671,7 +671,7 @@ The full analysis, including attackers, trust boundaries, assumptions, and every
 wardn itself must not become the way in. Since the first commit:
 
 - **Minimal dependencies.** The core uses only the standard library and one YAML parser. Every direct dependency is on an explicit allowlist that CI enforces; adding one requires a written justification and maintainer approval.
-- **Security gates on every change.** `govulncheck`, `gosec` (via golangci-lint), `staticcheck`, the race detector, and module verification all block merging, and also run locally before every push through a pre-push hook. CodeQL is added when the repository goes public (M10); on a private repository it requires paid GitHub Advanced Security.
+- **Security gates on every change.** `govulncheck`, `gosec` (via golangci-lint), `staticcheck`, the race detector, and module verification all block merging, and also run locally before every push through a pre-push hook. CodeQL (`security-extended`) runs on every change and weekly, since the repository went public (M10).
 - **Pinned CI.** Every GitHub Action is pinned to a full commit SHA, workflows run with read-only tokens, and Dependabot proposes updates for review.
 - **Protected main branch.** Changes land only through reviewed pull requests with passing checks and signed commits.
 - **Verifiable releases.** Releases are signed tags. The Go checksum database (`sum.golang.org`) guarantees every user downloads byte-identical source for a version. Binaries (the CLI) ship with build-provenance attestations.
@@ -850,7 +850,7 @@ The security pipeline is built **before any feature code**, so every line of war
 | **M7: Hardening** | Adversarial suite, extended fuzzing campaign, mutation testing, internal security review | No open high or critical findings |
 | **M8: Proof and documentation** | Reference applications (multi-branch bank, multi-tenant SaaS, flat app, school system), quick start, concepts, recipes, API reference; fresh-developer usability test; benchmarks | All four reference apps built cleanly on the public API; usability test passes unaided |
 | **M9: v1.0 announcement** | API review, stability promise ([STABILITY.md](STABILITY.md)) with an automatic API-compatibility check, release, internal announcement | Becomes the standard for new products |
-| **M10: Open source** | Licence, public repository, CodeQL code scanning (free for public repositories), launch post and talk | Leadership and legal approval |
+| **M10: Open source** | Licence, public repository, CodeQL code scanning (free for public repositories), launch post and talk | ✓ Public under Apache-2.0 (2026-11-08); launch post and talk to come |
 
 Versioning: semantic versioning. The API may change during `v0.x`. From `v1.0`, breaking changes require a new major version. The YAML format carries its own `version` field. What exactly stays compatible, and how it is checked, is in [STABILITY.md](STABILITY.md).
 
