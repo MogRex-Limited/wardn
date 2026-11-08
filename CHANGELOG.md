@@ -6,7 +6,9 @@ All notable changes to wardn are documented here. The format follows
 
 ## [Unreleased]
 
-Planned as v1.1.0, with `store/mongo` and `cache/redis` v1.1.0 (lockstep). Every
+## [1.1.0] - 2026-11-08
+
+Released together with `store/mongo` v1.1.0 and `cache/redis` v1.1.0. Every
 change is an addition: nothing in v1.0.0 changes.
 
 ### Added
