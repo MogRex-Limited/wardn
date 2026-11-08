@@ -29,6 +29,17 @@ export default defineConfig({
 					],
 				},
 				{
+					label: 'Learn',
+					items: [
+						{ label: 'What is authorization?', slug: 'learn/authorization' },
+						{ label: 'Role-based access control', slug: 'learn/rbac' },
+						{ label: 'Roles in a hierarchy', slug: 'learn/hierarchy' },
+						{ label: 'RBAC, ReBAC and ABAC', slug: 'learn/models' },
+						{ label: 'Libraries, engines and servers', slug: 'learn/architectures' },
+						{ label: 'Common mistakes', slug: 'learn/mistakes' },
+					],
+				},
+				{
 					label: 'Concepts',
 					items: [
 						{ label: 'Overview', slug: 'concepts/overview' },

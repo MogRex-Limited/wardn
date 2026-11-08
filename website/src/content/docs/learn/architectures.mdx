@@ -1,0 +1,55 @@
+---
+title: Libraries, policy engines and servers
+description: Authorization can run inside your app, in a policy engine, or in a central service. The trade-offs of each.
+---
+
+import { Aside, LinkCard } from '@astrojs/starlight/components';
+
+Apart from *how* you model access, you choose *where* the decision runs. There are three common shapes.
+
+## 1. A library inside your app
+
+The rules and the checking code run in your process. The data, such as who holds which role, lives in your own database.
+
+- **Examples:** wardn, Casbin, and most hand-written role systems.
+- **Strengths:** no extra service to run or secure; no network call per check; your authorization data sits next to your other data, so it can't drift out of sync. Easy to test, because a test is just a function call.
+- **Costs:** tied to your language. wardn is Go only. Each service that needs the rules embeds the library.
+
+## 2. A policy engine
+
+A general-purpose engine evaluates policies written in its own language, against data you pass in with each question. It can run as a library or as a sidecar next to your service.
+
+- **Examples:** Open Policy Agent (OPA) with Rego; Cedar, used by Amazon Verified Permissions.
+- **Strengths:** one policy language across many services and languages; expressive enough for attribute rules; policies can be reviewed and tested on their own.
+- **Costs:** a language to learn and maintain. It decides, but usually doesn't *store* who has which role: you still gather that data and pass it in.
+
+## 3. A central authorization service
+
+A separate service stores the authorization data, such as relationships, and answers questions over the network. This is the Zanzibar approach.
+
+- **Examples:** OpenFGA, SpiceDB, Google Zanzibar.
+- **Strengths:** one source of truth for many services and languages; fast "who can see this?" questions across very large graphs; built for sharing models.
+- **Costs:** another production service to run, scale, secure and keep available. Every check becomes a network call. Your app has to keep the service's data in sync with its own, for example by writing a relationship whenever a document is shared.
+
+## Comparing them
+
+| | Library in your app | Policy engine | Central service |
+|---|---|---|---|
+| Extra infrastructure | None | Sometimes (sidecar) | Yes |
+| Network call per check | No | Usually not | Yes |
+| Where the data lives | Your database | Passed in by you | The service |
+| Data to keep in sync | None | Some | Yes |
+| Works across languages | No | Yes | Yes |
+| Best for | Roles and tenancy inside one product | Attribute rules across many services | Sharing graphs across many services |
+
+<Aside>
+None of these is "the right one". A single Go product with tenants and admin screens is well served by a library. A company with fifty services in five languages that share documents between users may need a central service.
+</Aside>
+
+## Where wardn fits
+
+wardn is a **library**: no server, no network calls, and its tables live in the database you already run, with automatic migrations. A check costs a few database reads, and an optional cache makes it faster when you need it ([performance](/guides/performance/)).
+
+The trade-off is that it is for Go services. A server mode for services written in other languages is on the [roadmap](/project/roadmap/), to be built when a product needs it.
+
+<LinkCard title="Next: common authorization mistakes" description="The bugs that cause real breaches, and how to avoid them." href="/learn/mistakes/" />

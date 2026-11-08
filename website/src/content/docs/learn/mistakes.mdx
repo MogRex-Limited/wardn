@@ -1,0 +1,70 @@
+---
+title: Common authorization mistakes
+description: The access-control bugs behind real breaches, why they happen, and how to avoid each one.
+---
+
+import { LinkCard } from '@astrojs/starlight/components';
+
+Authorization bugs rarely look dramatic in code. They are usually a missing line, or a check against the wrong thing. These are the ones that matter most, roughly in order of how often they cause real damage.
+
+## 1. A route with no check
+
+**What happens:** someone adds an endpoint and forgets the check. It works in testing, because testers have access anyway.
+
+**Avoid it:** protect whole groups of routes at once rather than one handler at a time, and test that every route refuses a user with no roles. In wardn, `wardntest.AuditRoutes` fails your tests if any route answers anything but `403` to such a user. See [protecting HTTP routes](/guides/http/) and [testing](/guides/testing/).
+
+## 2. Checking the URL, using the ID (IDOR)
+
+**What happens:** `/branches/ibadan/loans/7` checks that the user may act at Ibadan, then loads loan 7, which belongs to Lagos. The check passed, for the wrong thing. This is also called a *confused deputy*, or insecure direct object reference (IDOR).
+
+**Avoid it:** check against the scope the resource belongs to, or look the resource up only within the scope you checked. Answer *not found* either way, so IDs from other tenants can't be probed. See [the confused-deputy trap](/guides/multi-tenancy/#the-confused-deputy-trap).
+
+## 3. Checking roles instead of permissions
+
+**What happens:** `if role == "admin"` spreads through the code. A new role, or a change to an old one, means hunting down every check, and the one you miss becomes a hole.
+
+**Avoid it:** code asks about permissions (`loan:approve`), and only the policy knows which roles have them. See [role-based access control](/learn/rbac/#check-permissions-not-roles).
+
+## 4. Failing open
+
+**What happens:** the database times out during a check, an error is swallowed, and the code carries on as if the answer were yes.
+
+**Avoid it:** any error must mean *no*. wardn's `Can` returns false on every error, and its middleware answers `500` without running your handler.
+
+## 5. Admins granting more than they hold
+
+**What happens:** a branch manager may assign roles in their branch. Through the admin screen they assign themselves `org_admin`, or create a custom role with every permission and give it to a friend.
+
+**Avoid it:** nobody may create, edit, assign or revoke a role containing permissions they don't hold themselves, including permissions the role *denies*. In wardn this is the [escalation guard](/guides/escalation-guard/), on by default.
+
+## 6. Trusting what the client sends
+
+**What happens:** the tenant ID, role or user ID comes from a header, a form field or a token claim the client controls, and the server believes it.
+
+**Avoid it:** the user's identity comes only from verified authentication. The tenant and roles come from your server's own data. A URL may *name* a scope, but the check, not the URL, decides whether the user may act there.
+
+## 7. Access that outlives its purpose
+
+**What happens:** someone gets temporary access to cover a colleague's leave, and nobody removes it. A year later it is still there.
+
+**Avoid it:** give temporary access an end date when you grant it. In wardn, `Until(...)` ends it automatically, with no cleanup job, and the expiry sweeper records it in your audit trail. See [time-limited access](/guides/time-limited-access/).
+
+## 8. Stale permissions from a cache
+
+**What happens:** permissions are cached for speed, so a revoked user keeps access until the cache expires, which in a bank can mean minutes of access after dismissal.
+
+**Avoid it:** cache data, not decisions, and invalidate on every change. wardn's cache is off by default; when it's on, a revocation applies on the very next request on every instance. See [caching](/guides/caching/).
+
+## 9. Errors that leak
+
+**What happens:** a `403` says *"you need loan:approve"*, or a `404` versus `403` reveals which IDs exist in another tenant. Attackers use these answers to map the system.
+
+**Avoid it:** return generic errors to clients and keep details in your logs. See [errors and HTTP statuses](/reference/errors/).
+
+## 10. No record of who changed what
+
+**What happens:** a customer asks who gave a contractor admin access, and nobody can say.
+
+**Avoid it:** record every change to access before it happens, with who made it. In wardn, `OnChange` sees every change and can block it if your audit log is unavailable. See [the audit trail](/guides/audit/).
+
+<LinkCard title="wardn's security model" description="What wardn guarantees, what it relies on, and the threats it is tested against." href="/security/overview/" />

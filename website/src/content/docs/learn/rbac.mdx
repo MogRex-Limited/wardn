@@ -1,0 +1,71 @@
+---
+title: Role-based access control
+description: Grant permissions to roles and roles to people. The most common authorization model, and the habits that keep it healthy.
+---
+
+import { Aside, LinkCard } from '@astrojs/starlight/components';
+
+In **role-based access control (RBAC)**, you never give a permission to a person directly. You give permissions to a **role**, and give the role to people.
+
+```text
+permissions        roles                      people
+─────────────      ───────────────────        ──────
+customer:view ┐
+loan:create   ├──▶ teller                ◀── bayo, kemi
+loan:view     ┘
+loan:approve  ───▶ loan_officer          ◀── tolu
+everything    ───▶ org_admin             ◀── ada
+```
+
+When Kemi joins as a teller, you assign one role and she can do exactly what tellers do. When tellers need a new ability, you change the role once and every teller has it.
+
+## Why it works
+
+- **It matches how organisations think.** People are hired into jobs, and jobs come with duties. A role is a job's duties written down.
+- **It scales with people.** A thousand users share a handful of roles. Reviewing access means reviewing a few roles, not a thousand people.
+- **It is easy to explain.** "Kemi is a teller" is something an auditor, a manager and a user all understand.
+
+## Habits that keep RBAC healthy
+
+### Check permissions, not roles
+
+The most common RBAC mistake is checking the role name in code:
+
+```go
+if user.Role == "admin" || user.Role == "manager" { // which roles may approve? it's scattered
+	approveLoan()
+}
+```
+
+Every new role then means finding and editing every check. Check the **permission** instead, and let the policy say which roles have it:
+
+```go
+if w.Can(ctx, user, "loan:approve", branch) { // one question; the policy holds the answer
+	approveLoan()
+}
+```
+
+Now "may loan officers approve?" is answered in one place, the policy, and code never changes when roles do.
+
+### Least privilege
+
+Give each role only what the job needs. A role that is a little too powerful is the usual way a small mistake becomes a large breach. It is easier to add a permission when someone asks than to discover which one was misused.
+
+### Separation of duties
+
+Some actions should need two people. The clerk who creates a payment shouldn't be the one who approves it. RBAC supports this by keeping the two permissions in different roles, and the application rejects approving your own request.
+
+### Watch for role explosion
+
+A role per variation, such as `lagos_teller`, `ibadan_teller` or `acme_admin`, multiplies until nobody knows what each one does. That usually means the model is missing a dimension: not *which job*, but *where*. That is what [roles in a hierarchy](/learn/hierarchy/) add.
+
+## Two extensions most products need
+
+- **Deny rules.** Sometimes you need to take access away, for example a `suspended` role that blocks everything wherever it is assigned. In wardn, a deny always wins over any allow.
+- **Custom roles.** Customers' admins eventually ask to create their own roles. That is safe only if nobody can create or grant a role with more power than they hold themselves. wardn enforces this with the [escalation guard](/guides/escalation-guard/).
+
+<Aside>
+RBAC is decades old and well studied: NIST published its reference model in the 1990s. Its weakness is not the idea but the way it is usually applied: role checks scattered through code, and one global role per user.
+</Aside>
+
+<LinkCard title="Next: roles in a hierarchy" description="Tenants, branches and workspaces: where a role applies." href="/learn/hierarchy/" />
