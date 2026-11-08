@@ -58,3 +58,4 @@ fi
 
 npm ci --no-audit --no-fund
 npm run build
+cp serve.mjs dist/serve.mjs # for hosts that deploy only dist/ and run: node serve.mjs

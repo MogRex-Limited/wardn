@@ -4,13 +4,18 @@
 // nginx.conf. The site has no server-side code: this only serves files.
 //
 //   node website/serve.mjs          # PORT (default 3002), HOST (default 0.0.0.0)
+//
+// It serves dist/ when it sits next to it (in the repository), or its own
+// directory when it sits inside the built site (build.sh copies it into
+// dist/, for hosts that deploy only the build output).
 import { createServer } from "node:http";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = fileURLToPath(new URL("./dist/", import.meta.url));
+const here = fileURLToPath(new URL("./", import.meta.url));
+const root = existsSync(join(here, "dist", "index.html")) ? join(here, "dist") + sep : here;
 const port = Number(process.env.PORT) || 3002;
 const host = process.env.HOST || "0.0.0.0";
 
