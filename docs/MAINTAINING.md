@@ -95,12 +95,13 @@ wardn is a Go module: users download source through the Go module proxy, and the
 2. Update [CHANGELOG.md](../CHANGELOG.md): move "Unreleased" entries under the new version, and call out security fixes, deprecations and database schema changes. From v1.0.0 there are no breaking changes ([STABILITY.md](STABILITY.md)).
 3. Create a **signed, annotated** tag on the merge commit:
    ```bash
-   git tag -s v0.1.0 -m "wardn v0.1.0"
-   git tag -v v0.1.0     # verify the signature before pushing
-   git push origin v0.1.0
+   git tag -s v1.2.0 -m "wardn v1.2.0"
+   git tag -v v1.2.0     # verify the signature before pushing
+   git push origin v1.2.0
    ```
+   Then tag the sub-modules on the same commit (see [Sub-modules](#sub-modules)).
 4. Create the GitHub release from the tag, with the changelog section as notes.
-5. Check that the new version appears on `pkg.go.dev` and that `go get github.com/MogRex-Limited/wardn@v0.1.0` works.
+5. Check that the new version appears on `pkg.go.dev` and that `go get github.com/MogRex-Limited/wardn@v1.2.0` works.
 
 Pushing the tag starts `.github/workflows/release.yml`. It:
 
@@ -124,11 +125,20 @@ Until the open-source milestone, host it **internally only**: build the containe
 
 ### Sub-modules
 
-`store/mongo` and `cache/redis` are separate Go modules, so their drivers reach only the teams that use them. Until the first release they build against the wardn in this repository through a `replace` directive, which Go ignores for downstream users. For each release:
+`store/mongo` and `cache/redis` are separate Go modules, so their drivers reach only the teams that use them. They are released **in lockstep with the core**: every release tags all three, at the same version, on the same commit.
 
-1. Tag the core first (`v0.x.y`).
-2. In each sub-module, drop the `replace` line, require that core version, and tidy.
-3. Tag each sub-module with its path: `store/mongo/v0.x.y` and `cache/redis/v0.x.y`.
+Each sub-module's `go.mod` keeps a `replace` line pointing at the core in this repository, so CI always tests the sub-modules against the current core. Go ignores `replace` for downstream users, who get the core version in the `require` line instead. That line is therefore what users actually build against, and it must name the version being released. In the release pull request:
+
+1. In `store/mongo/go.mod` and `cache/redis/go.mod`, set `require github.com/MogRex-Limited/wardn` to the new version, and run `go mod tidy` in each. This works before the tag exists, because of the `replace` line.
+2. After merging, tag the core (`v1.2.0`, step 3 above), then each sub-module with its path, on the same commit:
+   ```bash
+   git tag -s store/mongo/v1.2.0 -m "wardn store/mongo v1.2.0"
+   git tag -s cache/redis/v1.2.0 -m "wardn cache/redis v1.2.0"
+   git push origin store/mongo/v1.2.0 cache/redis/v1.2.0
+   ```
+3. Check that `go get github.com/MogRex-Limited/wardn/store/mongo@v1.2.0` works in a fresh module.
+
+Only core tags (`v*`) start the release workflow. Sub-module tags only publish their source. `make api` fails if a sub-module's `require` is older than the latest core tag, so a forgotten step 1 is caught on the next change.
 
 ### Known advisories
 
@@ -136,6 +146,6 @@ Until the open-source milestone, host it **internally only**: build the containe
 
 ### Versioning
 
-- Semantic versioning. `v0.x` may change the API; from `v1.0.0`, breaking changes need a new major version. [STABILITY.md](STABILITY.md) defines what that covers. `make api` (in `make check` and CI) compares every change with each module's latest v1 tag.
+- Semantic versioning. From `v1.0.0`, breaking changes need a new major version. [STABILITY.md](STABILITY.md) defines what that covers. `make api` (in `make check` and CI) compares every change with each module's latest v1 tag.
 - A security fix is released as a patch version as soon as it is ready, following [SECURITY.md](../SECURITY.md).
 - If a released version is found to be dangerous, add a `retract` directive to `go.mod` in the next release so `go get` warns users away from it.

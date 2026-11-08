@@ -30,8 +30,8 @@ We will keep you informed throughout, credit you in the advisory unless you pref
 
 | Version | Supported |
 |---|---|
-| `v0.x` (pre-release) | Latest minor only |
-| `v1.x` (once released) | Latest minor, plus security fixes for the previous minor for 6 months |
+| `v1.x` | Latest minor, plus security fixes for the previous minor for 6 months |
+| `v0.x` | Never released; not supported |
 
 ## Scope
 

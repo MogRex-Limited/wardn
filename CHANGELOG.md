@@ -6,7 +6,9 @@ All notable changes to wardn are documented here. The format follows
 
 ## [Unreleased]
 
-<!-- On release day, rename this section "[1.0.0] - YYYY-MM-DD" (docs/MAINTAINING.md §4). -->
+## [1.0.0] - 2026-11-08
+
+Released together with `store/mongo` v1.0.0 and `cache/redis` v1.0.0.
 
 **wardn v1.0.0, the first release.** wardn is authorization for Go services. You
 define your permissions, roles and scope hierarchy (organisations, regions,

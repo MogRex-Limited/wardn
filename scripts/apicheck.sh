@@ -72,12 +72,28 @@ for m in "${MODULES[@]}"; do
 	done
 done
 
+# Sub-modules are released in lockstep with the core (docs/MAINTAINING.md):
+# the core version they require is what users build against, so it must not
+# fall behind the latest core release.
+latest_core=$(git tag --list "v1.*" --sort=-v:refname | head -n 1)
+if [ -n "$latest_core" ]; then
+	for m in store/mongo cache/redis; do
+		required=$(cd "$root/$m" && go list -m -f '{{.Version}}' github.com/MogRex-Limited/wardn)
+		lowest=$(printf '%s\n%s\n' "$required" "$latest_core" | sort -V | head -n 1)
+		if [ "$required" != "$latest_core" ] && [ "$lowest" = "$required" ]; then
+			echo "== $m requires wardn $required, older than the latest release $latest_core; set it to the version being released"
+			failed=1
+		fi
+	done
+fi
+
 if [ "$failed" -ne 0 ]; then
 	cat <<'EOF'
 
-The public API changed incompatibly (see above). From v1.0.0 that needs a
-new major version (docs/STABILITY.md). Make the change compatible instead:
-add rather than change, and deprecate rather than remove.
+See above. An incompatible API change needs a new major version
+(docs/STABILITY.md): make the change compatible instead, adding rather than
+changing and deprecating rather than removing. A stale sub-module require is
+fixed in the release pull request (docs/MAINTAINING.md, Sub-modules).
 EOF
 	exit 1
 fi

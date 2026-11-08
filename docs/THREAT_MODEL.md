@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft; reviewed at every milestone and before v1.0 |
+| **Status** | Current for v1.0.0; re-reviewed for every minor release |
 | **Date** | 2026-11-07 |
 | **Companion to** | [DESIGN.md](DESIGN.md) |
 
