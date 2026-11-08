@@ -7,6 +7,7 @@
 #   store/mongo        MongoDB store
 #   cache/redis        Redis cache
 #   tests/integration  SQL and HTTP tests against real databases and chi
+#   examples           reference applications (bank, saas, simple, school)
 # Every gate runs on every module.
 
 GOLANGCI_LINT_VERSION := v2.15.0
@@ -15,7 +16,7 @@ GOVULNCHECK_VERSION   := v1.9.0
 GOLANGCI_LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 GOVULNCHECK   := go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 
-MODULES     := . store/mongo cache/redis tests/integration
+MODULES     := . store/mongo cache/redis tests/integration examples
 INTEGRATION := tests/integration
 COMPOSE     := docker compose -f $(INTEGRATION)/compose.yaml
 

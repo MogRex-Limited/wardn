@@ -3,6 +3,10 @@ title: Multi-tenant SaaS
 description: Workspaces and projects, owners and members, customer-defined roles, and object-level access.
 ---
 
+:::tip[Runs as a real app]
+This recipe is the [`saas` reference application](https://github.com/MogRex-Limited/wardn/tree/main/examples/saas). Its tests check every scenario on this page.
+:::
+
 A B2B product where each customer company has a *workspace*, each workspace contains *projects*, and customers want to define their own roles.
 
 ## The policy
@@ -81,4 +85,11 @@ r.Route("/workspaces/{ws}", func(r chi.Router) {
 })
 ```
 
-Remember the [confused-deputy trap](/guides/multi-tenancy/#the-confused-deputy-trap): load project `p` only within workspace `ws`, or check against the project's own scope.
+Remember the [confused-deputy trap](/guides/multi-tenancy/#the-confused-deputy-trap). Authorize against the project's own scope first, then check that the project belongs to the workspace in the URL:
+
+```go
+r.Route("/projects/{p}", func(r chi.Router) {
+	r.Use(w.ScopeFrom("project", wardn.PathValue("p")))
+	r.With(w.Require("project:edit"), projectInWorkspace).Put("/", editProject)
+})
+```

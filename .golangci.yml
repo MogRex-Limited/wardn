@@ -89,6 +89,15 @@ linters:
       - path: ^cmd/
         linters:
           - forbidigo
+      # The reference applications are programs: they may exit, and their
+      # shared test helper runs the wardn CLI to check generated code.
+      - path: ^examples/
+        linters:
+          - forbidigo
+      - path: ^examples/internal/demotest/
+        linters:
+          - depguard
+        text: "os/exec"
       # Tests read and write files under t.TempDir() and run the go
       # command; paths and commands come from the test itself, not from
       # outside input. Only these three rules, and only in tests.

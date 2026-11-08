@@ -1,0 +1,44 @@
+# The multi-branch bank from the docs (website: Recipes › Multi-branch bank).
+scopes:
+  organisation: {}
+  region: { parent: organisation }
+  branch: { parent: region }
+
+permissions:
+  branch:open:    Open branches
+  customer:view:  View customer profiles
+  customer:edit:  Edit customer details
+  loan:view:      View loans
+  loan:create:    Create loan applications
+  loan:approve:   Approve loans
+  report:export:  Export reports
+
+roles:
+  platform_admin:
+    description: Operates the platform for every bank
+    assignable_at: [global]
+    allow: ["*"]
+
+  org_admin:
+    description: Head office; administers one bank
+    assignable_at: [organisation]
+    allow: ["*"]
+
+  branch_manager:
+    description: Runs one branch, including its staff and roles
+    assignable_at: [branch]
+    allow: [customer:view, customer:edit, "loan:*", wardn:roles.assign, wardn:roles.manage]
+
+  teller:
+    description: Front desk
+    assignable_at: [branch]
+    allow: [customer:view, loan:view, loan:create]
+
+  regional_auditor:
+    description: Read-only, for a whole region
+    assignable_at: [region]
+    allow: [customer:view, loan:view, report:export]
+
+  suspended:
+    description: Blocks everything where it is assigned
+    deny: ["*"]

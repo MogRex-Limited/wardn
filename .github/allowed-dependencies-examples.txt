@@ -1,0 +1,8 @@
+# Direct dependencies of the reference applications (examples).
+# Never imported by users; they show wardn the way product teams use it.
+#
+# Format: <module path>  # <why it is needed>
+
+github.com/MogRex-Limited/wardn   # The library being demonstrated (replaced with ../).
+github.com/go-chi/chi/v5          # The router the organisation's products use.
+modernc.org/sqlite                # Pure-Go SQLite, so the apps run with no setup.

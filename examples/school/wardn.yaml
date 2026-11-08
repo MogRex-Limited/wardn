@@ -1,0 +1,26 @@
+# A school system: schools contain classes. Class membership lives in the
+# application's own data and reaches wardn through Config.ParentOf.
+scopes:
+  school: {}
+  class: { parent: school }
+
+permissions:
+  class:create:   Create classes
+  class:view:     View a class
+  grade:view:     View every grade in a class
+  grade:view_own: View your own grades
+  grade:edit:     Enter and change grades
+
+roles:
+  principal:
+    description: Runs a school and every class in it
+    assignable_at: [school]
+    allow: ["*"]
+  teacher:
+    description: Teaches one class
+    assignable_at: [class]
+    allow: [class:view, grade:view, grade:edit]
+  student:
+    description: Attends one class
+    assignable_at: [class]
+    allow: [class:view, grade:view_own]
