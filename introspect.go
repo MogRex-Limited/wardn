@@ -151,6 +151,9 @@ func (w *Warden) SweepExpired(ctx context.Context, opts ...SweepOption) (int, er
 	for _, opt := range opts {
 		opt(&o)
 	}
+	if w.inAppTx(ctx) {
+		return 0, invalidf("SweepExpired manages its own writes; call it without an application transaction")
+	}
 	now := w.clock.Now()
 	total := 0
 	for range 10_000 { // a bound, in case a store never marks anything

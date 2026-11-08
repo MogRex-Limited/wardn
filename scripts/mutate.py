@@ -104,8 +104,8 @@ MUTANTS = [
      "if err := w.cache.Incr(ctx, counters); err != nil {\n\t\t\tcacheErr = ",
      "if err := error(nil); err != nil {\n\t\t\tcacheErr = "),
     ("events.go", "no cache invalidation after a failed (possibly partial) write (review F2)",
-     "\tif len(counters) > 0 {\n\t\tif err := w.cache.Incr(ctx, counters); err != nil {\n\t\t\tcacheErr = ",
-     "\tif len(counters) > 0 && writeErr == nil {\n\t\tif err := w.cache.Incr(ctx, counters); err != nil {\n\t\t\tcacheErr = "),
+     "\tif len(counters) > 0 && (pending == nil || !pending.add(counters)) {\n\t\tif err := w.cache.Incr(ctx, counters); err != nil {\n\t\t\tcacheErr = ",
+     "\tif len(counters) > 0 && writeErr == nil && (pending == nil || !pending.add(counters)) {\n\t\tif err := w.cache.Incr(ctx, counters); err != nil {\n\t\t\tcacheErr = "),
     ("cache.go", "cache keys ignore the Global counter",
      "return &cacheVersions{tenant: vs[0], global: vs[1], root: root}",
      "return &cacheVersions{tenant: vs[0], global: 0, root: root}"),
@@ -153,6 +153,26 @@ MUTANTS = [
     ("store.go", "the memory store's RevokeExpired ignores the window (review F4)",
      "if ma := m.byUser[a.User][key]; ma != nil && ma.a.ExpiresAt.Equal(a.ExpiresAt) {",
      "if ma := m.byUser[a.User][key]; ma != nil {"),
+    # Application transactions (v1.1, threat model T28)
+    ("tx.go", "reads inside an application transaction use the shared cache",
+     "return w.cache != nil && !w.uncommitted(ctx)", "return w.cache != nil"),
+    ("tx.go", "reads inside an application transaction use the request memo",
+     "if w.uncommitted(ctx) {\n\t\treturn nil\n\t}\n\treturn w.memoFrom(ctx)", "return w.memoFrom(ctx)"),
+    ("tx.go", "a store wrapper that hides InTx lets transaction reads fill the cache",
+     "return w.inAppTx(ctx) || w.pendingFrom(ctx) != nil", "return w.inAppTx(ctx)"),
+    ("tx.go", "the end of a transaction keeps the request memo",
+     "w.memoFrom(ctx).forget()\n\tif w.cache == nil || len(counters) == 0 {",
+     "if w.cache == nil || len(counters) == 0 {"),
+    ("tx.go", "the end of a transaction does not invalidate the cache",
+     "if err := w.cache.Incr(ctx, counters); err != nil {\n\t\treturn fmt.Errorf(\"%w (transaction)",
+     "if err := error(nil); err != nil {\n\t\treturn fmt.Errorf(\"%w (transaction)"),
+    ("events.go", "a change in an application transaction without Warden.Transaction is allowed",
+     "case inTx && pending == nil:\n\t\treturn ErrNoTransaction",
+     "case inTx && pending == nil && false:\n\t\treturn ErrNoTransaction"),
+    ("events.go", "Warden.Transaction without the store's transaction writes outside it",
+     "case !inTx && pending != nil:", "case !inTx && pending != nil && false:"),
+    ("check_each.go", "a failed CheckEach returns partial decisions",
+     "if err != nil {\n\t\tds = make([]Decision, len(scopes))", "if err != nil && false {\n\t\tds = make([]Decision, len(scopes))"),
     ("introspect.go", "Members trusts the store's scope filtering",
      "return slices.DeleteFunc(page, func(a Assignment) bool { return a.Scope != scope }), next, nil",
      "return page, next, nil"),
@@ -167,7 +187,7 @@ def main():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     work = tempfile.mkdtemp(prefix="wardn-mutation-")
     try:
-        shutil.copytree(root, work, dirs_exist_ok=True, ignore=shutil.ignore_patterns(".git"))
+        shutil.copytree(root, work, dirs_exist_ok=True, ignore=shutil.ignore_patterns(".git", "node_modules", "dist"))
         survived, invalid = [], []
         for i, (path, desc, old, new) in enumerate(MUTANTS, 1):
             full = os.path.join(work, path)

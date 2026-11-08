@@ -26,10 +26,6 @@ type step struct {
 	done func(ctx context.Context, q querier) (bool, error)
 }
 
-type querier interface {
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-}
-
 // LatestSchemaVersion is the schema version this release migrates to.
 const LatestSchemaVersion = 2
 

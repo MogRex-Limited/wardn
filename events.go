@@ -99,6 +99,13 @@ var ErrAuditRejected = errors.New("wardn: the audit hook rejected the change")
 // shows that the change did not happen.
 func (w *Warden) change(ctx context.Context, ev Event, write func() error) error {
 	ev.At = w.clock.Now()
+	pending, inTx := w.pendingFrom(ctx), w.inAppTx(ctx)
+	switch {
+	case inTx && pending == nil:
+		return ErrNoTransaction
+	case !inTx && pending != nil:
+		return fmt.Errorf("%w: the context from Warden.Transaction carries no transaction for the store", ErrNoTransaction)
+	}
 	counters, err := w.countersFor(ctx, ev)
 	if err != nil {
 		return err
@@ -121,8 +128,10 @@ func (w *Warden) change(ctx context.Context, ev Event, write func() error) error
 	// Invalidate again after writing, so an entry a concurrent reader cached
 	// from the old data in between is never reachable. This runs even if the
 	// write failed: it may have been partly applied (security review F2).
+	// Inside an application transaction, the write becomes visible only at
+	// commit, so this waits until the transaction ends.
 	var cacheErr error
-	if len(counters) > 0 {
+	if len(counters) > 0 && (pending == nil || !pending.add(counters)) {
 		if err := w.cache.Incr(ctx, counters); err != nil {
 			cacheErr = fmt.Errorf("%w (%s): %w", ErrCacheInvalidation, ev.Type, err)
 		}

@@ -133,7 +133,13 @@ func (w *Warden) grants(ctx context.Context, user string, scope Scope) ([]grant,
 	if err != nil {
 		return nil, err
 	}
+	return w.grantsFrom(ctx, user, chain, assignments, cv)
+}
 
+// grantsFrom turns the assignments read for chain into the grants that
+// apply right now. It trusts nothing about assignments: they are filtered
+// again by user, scope and time window.
+func (w *Warden) grantsFrom(ctx context.Context, user string, chain []Scope, assignments []Assignment, cv *cacheVersions) ([]grant, error) {
 	depthOf := make(map[Scope]int, len(chain))
 	for i, s := range chain {
 		depthOf[s] = i
@@ -236,7 +242,7 @@ func (w *Warden) chain(ctx context.Context, scope Scope) ([]Scope, error) {
 	chain[0] = scope
 	cur := scope
 	var links *uint64 // the links counter, when parents can be cached
-	if w.cache != nil && w.parentOf == nil && w.policy.scopeTypes[scope.Type].parent != "" {
+	if w.readsCache(ctx) && w.parentOf == nil && w.policy.scopeTypes[scope.Type].parent != "" {
 		if vs, err := w.cache.Counters(ctx, []string{counterLinks}); err == nil && len(vs) == 1 {
 			links = &vs[0]
 		}
@@ -269,7 +275,7 @@ func (w *Warden) chain(ctx context.Context, scope Scope) ([]Scope, error) {
 }
 
 func (w *Warden) parent(ctx context.Context, child Scope, links *uint64) (Scope, bool, error) {
-	m := w.memoFrom(ctx)
+	m := w.readMemo(ctx)
 	if m != nil {
 		m.mu.Lock()
 		r, hit := m.parents[child]
@@ -308,7 +314,7 @@ func (w *Warden) parent(ctx context.Context, child Scope, links *uint64) (Scope,
 }
 
 func (w *Warden) assignments(ctx context.Context, user string, scope Scope, chain []Scope, cv *cacheVersions) ([]Assignment, error) {
-	m := w.memoFrom(ctx)
+	m := w.readMemo(ctx)
 	key := assignmentsKey{user: user, scope: scope}
 	if m != nil {
 		m.mu.Lock()
@@ -322,7 +328,7 @@ func (w *Warden) assignments(ctx context.Context, user string, scope Scope, chai
 	var as []Assignment
 	var err error
 	if cv != nil {
-		as, err = cached(ctx, w, cacheKey("assignments", user, scope, cv.root, cv.tenant, cv.global), load)
+		as, err = cached(ctx, w, assignmentsCacheKey(user, scope, cv), load)
 	} else {
 		as, err = load()
 	}
@@ -345,7 +351,7 @@ func (w *Warden) customRoles(ctx context.Context, ids []string, cv *cacheVersion
 	if len(ids) == 0 {
 		return out, nil
 	}
-	m := w.memoFrom(ctx)
+	m := w.readMemo(ctx)
 	var missing []string
 	if m != nil {
 		m.mu.Lock()
@@ -435,4 +441,10 @@ func (w *Warden) PermissionsOf(ctx context.Context, user string, scope Scope) ([
 		}
 	}
 	return out, nil
+}
+
+// assignmentsCacheKey is the cache key of the user's assignments along
+// scope's chain.
+func assignmentsCacheKey(user string, scope Scope, cv *cacheVersions) string {
+	return cacheKey("assignments", user, scope, cv.root, cv.tenant, cv.global)
 }

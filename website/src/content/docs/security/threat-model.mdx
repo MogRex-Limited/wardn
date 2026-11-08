@@ -31,6 +31,7 @@ This is a summary. The authoritative threat model, with every threat, its mitiga
 | Look-alike IDs, permissions or role names | Exact byte comparison; strict name rules; look-alike folding for role names |
 | SQL or NoSQL injection | Parameters only; typed Mongo values; validated table prefixes |
 | Forged cache entries | Entries signed with HMAC-SHA256 |
+| Uncommitted access reaching other requests | Inside your transaction, wardn bypasses the cache and memo, and invalidates again after the commit |
 | Typos | Startup validation, panics at route registration, generated constants |
 | Forgotten route protection | `wardntest.AuditRoutes` |
 | Information leaks | Generic error bodies; role existence hidden from non-managers |

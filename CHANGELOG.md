@@ -6,6 +6,35 @@ All notable changes to wardn are documented here. The format follows
 
 ## [Unreleased]
 
+Planned as v1.1.0, with `store/mongo` and `cache/redis` v1.1.0 (lockstep). Every
+change is an addition: nothing in v1.0.0 changes.
+
+### Added
+
+- **Changes inside your own transaction.** `wardnsql.Store.WithTx(ctx, tx)`
+  and `Warden.Transaction(ctx)` let `Assign`, `Revoke`, `Link`, `Move` and
+  custom-role changes commit or roll back with the application's own writes,
+  such as a membership row, an audit record or an outbox message. The SQL
+  store writes in savepoints, so a failed write (for example a taken role
+  name) leaves the transaction usable, including on PostgreSQL. New:
+  `wardn.TxStore`, `wardn.ErrNoTransaction`. Guide: *Changes in your own
+  transaction*, including sharing a transaction with pgx.
+- **`CheckEach` and `CanEach`:** one permission at many scopes, for filtering
+  lists, in a few store reads instead of a few per item. Decisions are the
+  same as `Check`'s, with the same reasons. `wardn.MaxCheckEach` bounds a
+  call at 1,000 scopes.
+- **Guide: Row-level security**, for PostgreSQL applications that use RLS
+  and a restricted database role: grants, migrations, tenant transactions,
+  and making `ParentOf` see parents.
+
+### Security
+
+- New threat **T28**: uncommitted access escaping an application's
+  transaction through the cache or the request memo. Inside a transaction,
+  wardn bypasses both and invalidates again after the commit; a change with
+  only half of the transaction setup fails with `ErrNoTransaction`. Tested in
+  the core with every safeguard mutated, and against every SQL database.
+
 ## [1.0.0] - 2026-11-08
 
 Released together with `store/mongo` v1.0.0 and `cache/redis` v1.0.0.

@@ -103,7 +103,7 @@ type cacheVersions struct {
 // versionsFor reads the counters for a chain, or nil when there is no cache
 // or reading them failed (then the store is used directly).
 func (w *Warden) versionsFor(ctx context.Context, chain []Scope) *cacheVersions {
-	if w.cache == nil {
+	if !w.readsCache(ctx) {
 		return nil
 	}
 	root := tenantRoot(chain)

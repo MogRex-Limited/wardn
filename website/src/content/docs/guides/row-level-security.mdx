@@ -1,0 +1,91 @@
+---
+title: Row-level security
+description: Use wardn in a PostgreSQL application that protects its tables with row-level security and a restricted database role.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Many multi-tenant PostgreSQL applications use **row-level security (RLS)** as a second wall between tenants. The application connects as a role that can't bypass it, and each transaction sets the tenant, for example with `set_config('app.organization_id', $1, true)`. Policies then hide every other tenant's rows.
+
+wardn works in this setup. This page covers the four things to get right.
+
+## 1. wardn's tables don't use RLS, by design
+
+wardn's tables (`wardn_assignments`, `wardn_scope_links`, `wardn_roles`, …) have no tenant column. A scope is just a type and an ID, and wardn serves every tenant from the same tables. Tenant isolation comes from the scope tree: every query wardn makes names the user and the exact scopes in the checked scope's chain, and wardn filters the results again itself, never trusting the database to have done it ([threat T01](/security/threat-model/)).
+
+So don't enable RLS on wardn's tables. A policy keyed on your tenant setting would hide assignments wardn needs, such as a `global` support role or a parent scope's assignments, and checks would quietly deny. If a schema test requires every table to have RLS, exempt wardn's tables by prefix, and record why.
+
+What protects wardn's tables instead: only your application's database role can reach them, and only through wardn.
+
+## 2. Grant the application role what wardn needs
+
+Run migrations as the schema owner and give the restricted role data access only:
+
+```go
+w, err := wardn.New(wardn.Config{
+	Store:            store,
+	ManualMigrations: true, // the app role can't run DDL
+	// ...
+})
+```
+
+```sql
+-- in your migration job, after store.Migrate(ctx) has run as the owner
+GRANT SELECT, INSERT, UPDATE, DELETE
+  ON wardn_assignments, wardn_scope_links, wardn_roles, wardn_role_rules, wardn_role_assignable
+  TO app;
+GRANT SELECT ON wardn_schema_migrations TO app;
+```
+
+If you change the table prefix with `WithTablePrefix`, use that prefix here.
+
+## 3. Write inside the tenant transaction
+
+To change access together with your own rows, pass the tenant transaction to wardn ([changes in your own transaction](/guides/transactions/)):
+
+```go
+wctx, ended := w.Transaction(ctx)
+err := database.InTenantTx(wctx, orgID, func(tx *sql.Tx) error {
+	ctx := store.WithTx(wctx, tx)
+	// your writes on tx, then:
+	return w.Assign(ctx, userID, "agent", product)
+})
+if endErr := ended(ctx); endErr != nil { // after InTenantTx has committed
+	log.Warn("wardn cache invalidation failed", "err", endErr)
+}
+```
+
+wardn's queries run with whatever the transaction has set, including `SET LOCAL ROLE` and the tenant setting. That's harmless for wardn's own tables, and it is exactly what your `ParentOf` needs (below).
+
+## 4. Make `ParentOf` see the parent, or store the links
+
+If scope parents come from your own tables through `Config.ParentOf`, those tables are probably RLS-protected. Outside a tenant transaction, such as in middleware that checks before opening one, the policy hides the row, `ParentOf` finds no parent, and the check **fails closed**: an organisation owner is denied on that organisation's product. It is safe, but it is wrong.
+
+Pick one of these:
+
+- **Store the links in wardn.** Call `w.Link(ctx, product, org)` in the same transaction that creates the product. Parents are then read from `wardn_scope_links`, which has no RLS. For most applications this is the simplest choice.
+- **Read the parent through a narrow function.** A `SECURITY DEFINER` SQL function that returns only a product's organisation ID, owned by a role that may read it:
+
+  ```sql
+  CREATE FUNCTION app.product_organization(product uuid) RETURNS uuid
+    LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public
+    AS $$ SELECT organization_id FROM products WHERE id = product $$;
+  REVOKE ALL ON FUNCTION app.product_organization(uuid) FROM PUBLIC;
+  GRANT EXECUTE ON FUNCTION app.product_organization(uuid) TO app;
+  ```
+
+  It reveals only which organisation a product ID belongs to, which is all `ParentOf` needs.
+- **Use the tenant transaction.** If `ctx` carries one (`store.InTx(ctx)`), query through it. Only checks made inside a tenant transaction can then see parents.
+
+<Aside type="caution">
+Test with the real role. A superuser, or the owner of a table without `FORCE ROW LEVEL SECURITY`, bypasses RLS, so tests that connect as `postgres` pass even when production would deny.
+</Aside>
+
+## Checklist
+
+- [ ] wardn's tables have no RLS, and are exempted by name in any schema test.
+- [ ] The app role has `SELECT, INSERT, UPDATE, DELETE` on wardn's tables, and nothing more.
+- [ ] Migrations run as the owner, with `ManualMigrations: true` in the application.
+- [ ] Changes to access that go with your own writes use `store.WithTx` and `w.Transaction`.
+- [ ] Parents are stored with `Link`, or `ParentOf` can read them outside a tenant transaction.
+- [ ] Integration tests connect as the restricted role.

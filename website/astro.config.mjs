@@ -63,6 +63,8 @@ export default defineConfig({
 						{ label: 'Testing', slug: 'guides/testing' },
 						{ label: 'Typo-proof names (wardn gen)', slug: 'guides/code-generation' },
 						{ label: 'Choosing a store', slug: 'guides/stores' },
+						{ label: 'Changes in your own transaction', slug: 'guides/transactions' },
+						{ label: 'Row-level security', slug: 'guides/row-level-security' },
 						{ label: 'Caching across instances', slug: 'guides/caching' },
 						{ label: 'Performance', slug: 'guides/performance' },
 					],
