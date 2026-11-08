@@ -1,0 +1,60 @@
+---
+title: Roles in a hierarchy
+description: Multi-tenant products need roles that apply somewhere, not everywhere. Scopes, inheritance and tenant isolation explained.
+---
+
+import { Aside, LinkCard } from '@astrojs/starlight/components';
+
+Plain RBAC gives each user a role for the whole system. That breaks the moment your product has more than one customer: Ada is an admin, but only of *her* bank.
+
+The fix is to attach every role to a place. wardn calls that place a **scope**.
+
+> Ada is `org_admin` **at organisation:acme**. Bayo is `teller` **at branch:lagos**.
+
+## Scopes form a tree
+
+Most products already have a natural structure. You declare it, and roles flow **down** it:
+
+```text
+global                                     root  → platform_admin   (everything, everywhere)
+ ├── organisation:acme                     ada   → org_admin        (all of Acme)
+ │    └── region:south                     seun  → auditor          (every branch in the South)
+ │         ├── branch:lagos                bayo  → teller           (Lagos only)
+ │         └── branch:ibadan
+ └── organisation:globex                   (none of the above reach here)
+```
+
+- A role held at a scope applies there **and everywhere below it**. Seun audits Lagos and Ibadan because both are in the South.
+- It never applies **above** or **beside** it. Bayo's teller role says nothing about Ibadan.
+- Separate tenants are separate branches of the tree, so **tenant isolation** comes from the structure itself, not from a `WHERE tenant_id = ?` that someone has to remember.
+
+## Every product's tree is different
+
+| Product | Its scope tree |
+|---|---|
+| Bank | organisation › region › branch |
+| SaaS | workspace › project |
+| School system | district › school › class |
+| Simple internal tool | none: one global scope |
+
+The tree is yours to define. wardn knows nothing about banks or schools: it only knows that a `branch` sits under a `region`.
+
+## Why not one role per tenant?
+
+Without scopes, teams encode the place in the role name: `acme_admin`, `globex_admin`, `lagos_teller`. It works for a while, then:
+
+- Every new customer or branch means new roles.
+- "Who are the admins of Acme?" becomes a string search.
+- Nothing stops a check from accepting `globex_admin` on Acme's data, because the computer doesn't know the names mean anything.
+
+With scopes there is one `org_admin` role, and the question becomes *who holds `org_admin` at `organisation:acme`?*
+
+## Check the resource's scope
+
+Scopes protect data only if every check names the right one. A request to `/branches/ibadan/loans/7` passes a check for Ibadan, but loan 7 might belong to Lagos. This is the classic *confused deputy* bug, also called IDOR. The rule is to check against the scope **the resource belongs to**, or to look the resource up only within the scope you checked.
+
+<Aside type="caution">
+This is the single most common authorization bug in multi-tenant products. The [multi-tenancy guide](/guides/multi-tenancy/) shows the safe pattern: authorize first, then look up within that scope.
+</Aside>
+
+<LinkCard title="Next: RBAC, ReBAC and ABAC" description="Three ways to model access, and how to choose." href="/learn/models/" />

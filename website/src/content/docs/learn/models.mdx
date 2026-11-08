@@ -1,0 +1,62 @@
+---
+title: RBAC, ReBAC and ABAC
+description: Roles, relationships and attributes. What each model is good at, how they mix, and where wardn fits.
+---
+
+import { Aside, LinkCard } from '@astrojs/starlight/components';
+
+There are three common ways to model who may do what. Each answers the question from a different angle.
+
+| Model | Access comes from… | Typical question | Classic example |
+|---|---|---|---|
+| **RBAC**, role-based | The **roles** a user holds | *Is Bayo a teller at this branch?* | Staff roles in a bank or a back office |
+| **ReBAC**, relationship-based | The user's **relationships** to objects | *Is Bayo an editor of this document, or a member of a team that is?* | Sharing in Google Docs or GitHub |
+| **ABAC**, attribute-based | **Attributes** of the user, the object and the request | *Is the loan under the user's limit, during office hours, from a company device?* | Rules that depend on amounts, regions or time |
+
+## RBAC: roles
+
+Permissions are grouped into roles, and users are given roles, often at a place in a hierarchy (see [roles in a hierarchy](/learn/hierarchy/)).
+
+- **Good at:** organisations with jobs and duties; admin screens where people manage access; audits. Easy to explain to non-developers.
+- **Struggles with:** per-object sharing. "Share this one document with these three people" doesn't fit a role.
+
+## ReBAC: relationships
+
+Access follows a graph of relationships: *user is a member of team*, *team is an editor of folder*, *folder contains document*. Google described its global system for this, **Zanzibar**, in a 2019 paper. OpenFGA and SpiceDB are open-source systems inspired by it.
+
+- **Good at:** sharing between people and objects, nested groups and folders, very large numbers of objects. Answering "who can see this?" across the graph.
+- **Struggles with:** simplicity. You learn a modelling language, run a separate service, and keep its relationship data in sync with your own database.
+
+## ABAC: attributes
+
+A policy evaluates attributes at request time: the user's department or clearance, the object's amount or classification, the time, the network. Policy engines such as OPA (with its Rego language) and Cedar are often used for ABAC.
+
+- **Good at:** rules that depend on values: amount limits, working hours, data residency, regulations.
+- **Struggles with:** answering "what can this person do?" without evaluating every policy, and with keeping policies readable as they grow.
+
+## Most real systems mix them
+
+The models aren't rivals. A typical product is RBAC at its core, with a few relationships and a few attribute rules on top:
+
+- A bank: roles per branch (RBAC), the branch tree (a relationship), and *approve up to ₦5m without a second signature* (an attribute).
+- A SaaS: workspace roles (RBAC), and *the creator of a project can always edit it* (a relationship).
+
+## How to choose
+
+Start from the questions your product actually asks:
+
+- *"Is this person allowed to do this job here?"* Start with **RBAC with scopes**.
+- *"Has this specific object been shared with this person?"*, across millions of objects. Use **ReBAC**.
+- *"Does this request meet these business conditions?"* Add **attribute rules**, usually in your own code next to the check, or in a policy engine if there are many.
+
+## Where wardn fits
+
+wardn is **RBAC with scopes**, designed to cover what most products need without a separate service:
+
+- Roles, permissions and a scope tree you define, including per-object scopes when you need them, such as access to a single project.
+- Hierarchy through stored links or your own data, which covers the most common relationship: *this belongs to that*.
+- Time windows on assignments, the most common attribute rule.
+
+It is **not** a relationship graph for sharing millions of individual objects between people and groups. If that is your core need, use OpenFGA or SpiceDB. Attribute rules such as amount limits aren't built in yet; until then, check them in your code after wardn's check.
+
+<LinkCard title="Next: libraries, policy engines and servers" description="Where the decision runs, and what that costs." href="/learn/architectures/" />

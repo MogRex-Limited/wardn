@@ -20,7 +20,14 @@ hero:
       variant: minimal
 ---
 
-import { Card, CardGrid, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components';
+import { Card, CardGrid, Icon, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components';
+import PostgreSQL from '../../assets/logos/postgresql.svg';
+import MySQL from '../../assets/logos/mysql.svg';
+import MariaDB from '../../assets/logos/mariadb.svg';
+import SQLite from '../../assets/logos/sqlite.svg';
+import MongoDB from '../../assets/logos/mongodb.svg';
+import Redis from '../../assets/logos/redis.svg';
+import Go from '../../assets/logos/go.svg';
 
 <div class="landing-section">
 
@@ -103,7 +110,36 @@ r.Route("/branches/{branchID}", func(r chi.Router) {
 
 ## Four ideas, nothing more
 
-<p class="landing-lead">A <strong>permission</strong> is an action your code checks. A <strong>role</strong> is a set of permissions. A <strong>scope</strong> is where a role applies, and roles flow down the scope tree. An <strong>assignment</strong> gives a user a role in a scope, optionally for a limited time.</p>
+<p class="landing-lead">Each idea builds on the one before. Learn these four and you know wardn.</p>
+
+<ol class="ideas not-content">
+	<li class="idea">
+		<div class="idea-head"><span class="idea-icon"><Icon name="approve-check" /></span><span class="idea-step">1</span></div>
+		<h3>Permission</h3>
+		<p>An action your code checks.</p>
+		<code class="idea-example">loan:approve</code>
+	</li>
+	<li class="idea">
+		<div class="idea-head"><span class="idea-icon"><Icon name="list-format" /></span><span class="idea-step">2</span></div>
+		<h3>Role</h3>
+		<p>A named set of permissions.</p>
+		<code class="idea-example">teller: [customer:view, loan:create]</code>
+	</li>
+	<li class="idea">
+		<div class="idea-head"><span class="idea-icon"><Icon name="code-branch" /></span><span class="idea-step">3</span></div>
+		<h3>Scope</h3>
+		<p>Where a role applies. Roles flow down the tree.</p>
+		<code class="idea-example">organisation › region › branch</code>
+	</li>
+	<li class="idea">
+		<div class="idea-head"><span class="idea-icon"><Icon name="link" /></span><span class="idea-step">4</span></div>
+		<h3>Assignment</h3>
+		<p>Gives a user a role in a scope, optionally until a set time.</p>
+		<code class="idea-example">bayo → teller @ branch:lagos</code>
+	</li>
+</ol>
+
+<p class="ideas-caption">Put together, in a bank:</p>
 
 ```text
 organisation:acme                     ada  → org_admin      (everything in Acme)
@@ -120,15 +156,14 @@ organisation:acme                     ada  → org_admin      (everything in Acm
 
 ## Works with
 
-<ul class="works-with">
-	<li>PostgreSQL</li>
-	<li>MySQL</li>
-	<li>MariaDB</li>
-	<li>SQLite</li>
-	<li>MongoDB</li>
-	<li>Redis / Valkey</li>
-	<li>net/http</li>
-	<li>chi</li>
+<ul class="works-with not-content">
+	<li><PostgreSQL />PostgreSQL</li>
+	<li><MySQL />MySQL</li>
+	<li><MariaDB />MariaDB</li>
+	<li><SQLite />SQLite</li>
+	<li><MongoDB />MongoDB</li>
+	<li><Redis />Redis / Valkey</li>
+	<li><Go />net/http and chi</li>
 </ul>
 
 </div>

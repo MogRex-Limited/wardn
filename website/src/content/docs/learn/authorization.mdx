@@ -1,0 +1,53 @@
+---
+title: What is authorization?
+description: Authentication proves who someone is. Authorization decides what they may do. Why the second one is harder than it looks.
+---
+
+import { Aside, LinkCard } from '@astrojs/starlight/components';
+
+Every request to your product raises two questions, in order:
+
+| | Question | Answered by | Example |
+|---|---|---|---|
+| **Authentication** (authn) | *Who are you?* | A password, a passkey, a token from your identity provider | "This request comes from Bayo." |
+| **Authorization** (authz) | *What may you do here?* | Your product's rules about people, actions and data | "Bayo may create loans at the Lagos branch, but not approve them." |
+
+Authentication is mostly a solved problem: you plug in an identity provider and get a verified user ID. Authorization can't be bought off the shelf in the same way, because the rules are your product's own. Only a lending app knows that a teller may create a loan but not approve it.
+
+## The question, precisely
+
+Every authorization decision has the same parts:
+
+- **Who** is acting: the user, or a service acting for them.
+- **What** they want to do: an action, such as *approve a loan*.
+- **Where**, or **on what**: the place or the object the action touches, such as *the Lagos branch* or *loan 7*.
+- Sometimes **under which conditions**: the time of day, the amount, the device.
+
+The answer is yes or no. Everything else, such as roles, groups, tenants and policies, is a way of organising the rules that produce that answer.
+
+## Deciding and enforcing
+
+Two jobs are easy to blur together:
+
+- **Enforcing** happens in your code, at the point where the action would happen: the route handler, the button, the background job. It asks the question and refuses if the answer is no.
+- **Deciding** is working out the answer from the rules and the data: who holds which role, where.
+
+Keeping them apart is what makes authorization manageable. Your handlers ask one short question (*may this user approve loans at this branch?*) and never contain the rules themselves. When the rules change, the handlers don't.
+
+## Why it's harder than it looks
+
+Authorization usually starts as one line, `if user.IsAdmin`, and grows with the product:
+
+- **Customers arrive.** One company's admin must not see another company's data, so every check needs to know which tenant it is in.
+- **Organisations have structure.** Head office sees every branch, a manager sees one branch, an auditor sees one region.
+- **Admins want control.** "Can I create a role for my support team?" Now people who aren't developers define access, and they must not be able to grant themselves more than they have.
+- **Access changes over time.** Someone covers for a colleague for a week, and that access has to end on its own.
+- **Someone asks who did what.** An auditor, a customer or a regulator wants a record of every change to who can do what.
+
+Each step is reasonable on its own. Together they turn scattered `if` statements into a security system, usually one that was never designed as one. That is why broken access control has been the top risk in the [OWASP Top 10](https://owasp.org/Top10/) since 2021.
+
+<Aside type="tip">
+In wardn, enforcement is one line: `w.Require("loan:approve")` on a route, or `w.Can(ctx, user, "loan:approve", branch)` in code. The decision comes from your policy file and the assignments wardn stores.
+</Aside>
+
+<LinkCard title="Next: role-based access control" description="The model most products start with, and how to use it well." href="/learn/rbac/" />
