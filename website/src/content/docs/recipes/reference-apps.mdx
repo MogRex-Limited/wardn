@@ -1,0 +1,46 @@
+---
+title: Reference applications
+description: Four small, complete applications built on wardn's public API, with tests that prove what the docs describe.
+---
+
+import { CardGrid, Card } from '@astrojs/starlight/components';
+
+The repository's [`examples/`](https://github.com/MogRex-Limited/wardn/tree/main/examples) folder holds four applications that use wardn the way product teams will: through its public API only, with chi, SQLite and generated permission names. Their tests check that the behaviour these docs describe really happens. If a page here and the code ever disagree, a test fails.
+
+<CardGrid>
+	<Card title="bank" icon="seti:folder">
+		Organisations › regions › branches. Head office, branch managers, tellers and regional auditors; a custom "Loan Approver" role given for one week; a suspension; maker-checker; the confused-deputy check.
+	</Card>
+	<Card title="saas" icon="seti:folder">
+		Workspaces and projects. Sign-up with `System()`, customer-defined roles that stay in their workspace, per-project contractors, and an "assign role" picker from `AssignableRoles`.
+	</Card>
+	<Card title="simple" icon="seti:folder">
+		No tenancy at all: admins, editors and viewers, every role global, no `ScopeFrom` anywhere.
+	</Card>
+	<Card title="school" icon="seti:folder">
+		Schools and classes, with the hierarchy read from the app's own data through `ParentOf`: nothing stored twice. Students see only their own grades, a business rule on top of wardn.
+	</Card>
+</CardGrid>
+
+## Run one
+
+```bash
+cd examples
+go run ./bank      # :8080, data in bank.db; "root" is the platform admin
+```
+
+Each app's `README.md` lists requests to try with `curl`.
+
+:::caution[Demo authentication]
+The apps trust an `X-User` header so you can try them from a terminal. Never do this in production: verify the user in your authentication middleware and call `wardn.WithUser`.
+:::
+
+## What every app's tests prove
+
+- **The scenarios from its recipe**, request by request, against the running HTTP API.
+- **Every route is protected**: `wardntest.AuditRoutes` calls every route as a user with no roles.
+- **The generated permission names are current**: `wardn gen -check`.
+
+```bash
+cd examples && go test ./...
+```

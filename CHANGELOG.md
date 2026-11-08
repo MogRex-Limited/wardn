@@ -143,6 +143,17 @@ All notable changes to wardn are documented here. The format follows
   validation on every build, `make docs` and `make docs-build`, a hardened
   container for internal hosting, and a CI job.
 
+- Reference applications (M8, `examples/`, its own module): `bank`
+  (organisations, regions and branches; custom approver role for a week;
+  suspension; maker-checker), `saas` (workspaces, customer-defined roles,
+  per-project access), `simple` (no tenancy) and `school` (hierarchy through
+  `ParentOf`; students see only their own grades). They use only the public
+  API with chi, SQLite and generated names. Each app's tests check its recipe
+  page request by request, audit every route, and check generated code is
+  current. Their route audit caught an ID-enumeration mistake in an early
+  SaaS draft, and the multi-tenancy guide now teaches "authorize first, then
+  look up".
+
 ### Removed
 
 - CodeQL workflow, until the repository is public or GitHub Advanced

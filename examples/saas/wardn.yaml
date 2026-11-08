@@ -1,0 +1,26 @@
+# The multi-tenant SaaS from the docs (website: Recipes › Multi-tenant SaaS).
+scopes:
+  workspace: {}
+  project: { parent: workspace }
+
+permissions:
+  project:view:     View projects
+  project:edit:     Edit projects
+  project:create:   Create projects
+  project:delete:   Delete projects
+  member:invite:    Invite people
+  billing:manage:   Manage billing
+
+roles:
+  workspace_owner:
+    description: Owns a workspace and everything in it
+    assignable_at: [workspace]
+    allow: ["*"]
+  workspace_member:
+    description: Sees every project and can start new ones
+    assignable_at: [workspace]
+    allow: [project:view, project:create]
+  project_editor:
+    description: Edits one project
+    assignable_at: [project]
+    allow: [project:view, project:edit]

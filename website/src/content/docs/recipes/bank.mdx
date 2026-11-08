@@ -5,6 +5,10 @@ description: Organisations, regions and branches, with tellers, managers, audito
 
 import { Aside } from '@astrojs/starlight/components';
 
+:::tip[Runs as a real app]
+This recipe is the [`bank` reference application](https://github.com/MogRex-Limited/wardn/tree/main/examples/bank). Its tests check every scenario on this page.
+:::
+
 A lending platform serves several banks. Each bank (an *organisation*) has regions, and each region has branches. Staff work at one branch, managers run a branch, auditors cover a region, and head office administers the whole bank.
 
 ## The policy
@@ -16,6 +20,7 @@ scopes:
   branch: { parent: region }
 
 permissions:
+  branch:open:    Open branches
   customer:view:  View customer profiles
   customer:edit:  Edit customer details
   loan:view:      View loans

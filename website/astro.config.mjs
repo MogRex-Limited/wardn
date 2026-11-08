@@ -58,6 +58,7 @@ export default defineConfig({
 				{
 					label: 'Recipes',
 					items: [
+						{ label: 'Reference applications', slug: 'recipes/reference-apps' },
 						{ label: 'Multi-branch bank', slug: 'recipes/bank' },
 						{ label: 'Multi-tenant SaaS', slug: 'recipes/saas' },
 						{ label: 'App without tenancy', slug: 'recipes/simple' },

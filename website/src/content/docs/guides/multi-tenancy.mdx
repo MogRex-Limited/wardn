@@ -97,6 +97,10 @@ func (h *Handlers) approveLoan(rw http.ResponseWriter, r *http.Request) {
 
 Whenever a handler acts on a specific record, check against the record's own scope, or load records only through queries filtered by the scope from the URL.
 
+<Aside type="caution" title="Authorize first, then look up">
+Check permissions **before** looking a record up. If a handler answers `404` for records that don't exist and `403` for records that do, anyone can learn which IDs exist, even in another tenant. With the check first, every caller without the permission gets the same `403`. The reference applications' route audit caught exactly this mistake in an early version of the SaaS example.
+</Aside>
+
 ## What wardn guarantees
 
 - An assignment applies only in its scope and below. wardn re-checks every row the store returns, so even a faulty store can't leak another tenant's roles.

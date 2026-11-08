@@ -1,0 +1,10 @@
+# The app without tenancy from the docs (website: Recipes › App without tenancy).
+permissions:
+  article:view:    View articles
+  article:edit:    Edit articles
+  article:publish: Publish articles
+
+roles:
+  admin:  ["*"]
+  editor: [article:view, article:edit, article:publish]
+  viewer: [article:view]
