@@ -19,14 +19,14 @@ Every product needs roles and permissions, and every product is different. A ban
 - **Grants access for a limited time**, such as a temporary approver until Friday, with no cleanup job required.
 - **Records every change** before it happens, for your audit trail.
 
-## What wardn does not do
+## What wardn leaves to other tools
 
-wardn is deliberately focused. It does **not**:
+wardn is deliberately focused on one job, and works alongside the tools that do the others:
 
-- **authenticate users.** Your existing login, JWT or session code says *who* the user is; wardn decides *what they may do*.
-- **evaluate business conditions** such as "approve loans under ₦5M". Check those in your code after wardn says yes.
-- **model relationship graphs at Google scale.** If your core need is "editor of a folder can edit every document inside it" across millions of objects, use OpenFGA or SpiceDB.
-- **run as a separate server.** wardn is a library inside your application.
+- **Signing people in** stays with your login, JWT or session code. It says *who* the user is; wardn decides *what they may do*.
+- **Business conditions** such as "approve loans under ₦5M" go in your code, right after wardn says yes. An optional module for common conditions is planned.
+- **Sharing individual objects** between people and groups across millions of objects, such as "editor of a folder can edit every document inside it", is the job of a relationship service such as OpenFGA or SpiceDB. Many products use one alongside wardn.
+- **There is no server to run.** wardn is a library inside your application, on the database you already have.
 
 ## Opinionated, on purpose
 
