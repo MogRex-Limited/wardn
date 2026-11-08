@@ -242,3 +242,81 @@ func itoa(i int) string {
 		}
 	}
 }
+
+// Found by the M8 usability rehearsal: two tenants reusing a scope ID.
+func TestThreat_T27_ReusedScopeIDCannotCrossTenants(t *testing.T) {
+	w, _ := newBank(t)
+	ctx := context.Background()
+	lagosCardio := NewScope("branch", "cardiology")
+	if err := w.Link(ctx, lagosCardio, region1); err != nil { // tenant o1's "cardiology"
+		t.Fatal(err)
+	}
+	assign(t, w, "admin2", "org_admin", org2)
+
+	// Tenant o2 also calls a branch "cardiology" and links it: refused, not
+	// moved under o2's administrators.
+	err := w.Link(ctx, lagosCardio, region2)
+	if !errors.Is(err, ErrAlreadyLinked) || !errors.Is(err, ErrInvalidLink) {
+		t.Fatalf("Link of a reused ID: %v", err)
+	}
+	wantCan(t, w, "admin2", "loan:approve", lagosCardio, false)
+}
+
+func TestLinkIsIdempotentAndQuiet(t *testing.T) {
+	var events int
+	w, _ := newBank(t, func(c *Config) {
+		c.OnChange = func(_ context.Context, e Event) error {
+			if e.Type == EventLinked {
+				events++
+			}
+			return nil
+		}
+	})
+	events = 0 // newBank's own links
+	ctx := context.Background()
+	for range 3 {
+		if err := w.Link(ctx, branch1, region1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if events != 0 {
+		t.Fatalf("re-linking to the same parent produced %d audit events; want none", events)
+	}
+}
+
+func TestNowFollowsTheConfiguredClock(t *testing.T) {
+	w, clock := newBank(t)
+	if !w.Now().Equal(clock.Now()) {
+		t.Fatal("Now does not use Config.Clock")
+	}
+	clock.Advance(time.Hour)
+	if !w.Now().Equal(t0.Add(time.Hour)) {
+		t.Fatal("Now does not follow the clock")
+	}
+}
+
+func TestAssignIsQuietWhenNothingChanges(t *testing.T) {
+	var events []Event
+	w, _ := newBank(t, func(c *Config) {
+		c.OnChange = func(_ context.Context, e Event) error { events = append(events, e); return nil }
+	})
+	ctx := context.Background()
+	for range 3 { // e.g. seeding the first admin on every start
+		if err := w.System().Assign(ctx, "root", "super_admin", Global); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A different time window is a real change.
+	if err := w.System().Assign(ctx, "root", "super_admin", Global, Until(t0.Add(time.Hour))); err != nil {
+		t.Fatal(err)
+	}
+	var assigned int
+	for _, e := range events {
+		if e.Type == EventAssigned {
+			assigned++
+		}
+	}
+	if assigned != 2 {
+		t.Fatalf("%d assignment events, want 2 (the first assignment and the window change)", assigned)
+	}
+}

@@ -48,4 +48,6 @@ func TestMyStore(t *testing.T) {
 
 The suite runs the same 25 checks the official stores pass on every change. Among them: exact identity across case, Unicode forms and widths; IDs containing SQL injection text; atomic name uniqueness and versioned updates under 8 concurrent writers; time round-trips; cancellation; and an end-to-end scenario through a real Warden.
 
+`storetest.Bench` measures your store on a bank-sized dataset, with the same benchmarks as the official stores ([Performance](/guides/performance/)).
+
 <Aside>A shared cache works the same way: implement `wardn.Cache` and run `cachetest.Run`.</Aside>

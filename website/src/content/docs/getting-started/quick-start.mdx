@@ -43,6 +43,8 @@ This guide adds wardn to an existing Go web service that uses chi and PostgreSQL
        allow: [customer:view, loan:create]
    ```
 
+   `global` (in `super_admin`'s `assignable_at`) is the scope above everything, which every product has without declaring it. A role assigned there applies everywhere.
+
    Every permission needs a short description: admin screens show it to people choosing permissions. Two management permissions, `wardn:roles.assign` and `wardn:roles.manage`, are built in and always available. `"*"` grants everything, including them.
 
 3. **Start wardn in `main`**
@@ -70,15 +72,18 @@ This guide adds wardn to an existing Go web service that uses chi and PostgreSQL
 
    wardn doesn't log people in. Your existing authentication middleware puts the user's ID in the request context:
 
-   ```go title="auth.go" ins={4}
+   ```go title="auth.go" ins={4-6}
    func authenticate(next http.Handler) http.Handler {
    	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-   		userID := verifyToken(r) // your code
-   		r = r.WithContext(wardn.WithUser(r.Context(), userID))
+   		if userID, ok := verifyToken(r); ok { // your code
+   			r = r.WithContext(wardn.WithUser(r.Context(), userID))
+   		}
    		next.ServeHTTP(w, r)
    	})
    }
    ```
+
+   Set the user only when the token is valid. With no valid token there's no user, and wardn answers `401`.
 
 5. **Protect your routes**
 
@@ -106,7 +111,7 @@ This guide adds wardn to an existing Go web service that uses chi and PostgreSQL
 
 7. **Prove it with a test**
 
-   `wardntest` runs your real policy in memory, with no database:
+   `wardntest` runs your real policy in memory, with no database. `AsRoleIn` creates a user with the role and puts them in the request's context, just as `authenticate` would. That works because `authenticate` only sets a user when a token is present:
 
    ```go title="routes_test.go"
    func TestTellersCannotApproveLoans(t *testing.T) {

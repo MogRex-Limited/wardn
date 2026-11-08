@@ -30,6 +30,11 @@ var (
 	// assigned, without wardn.Cascade.
 	ErrRoleInUse = errors.New("wardn: role is still assigned")
 
+	// ErrAlreadyLinked reports a Link to a different parent than the scope
+	// already has. It usually means two tenants reuse an ID. Use Move to
+	// change a parent on purpose. It also matches ErrInvalidLink.
+	ErrAlreadyLinked = errors.New("wardn: scope already has a different parent")
+
 	// ErrLinksExternal reports a call to Link when scope parents are
 	// resolved by Config.ParentOf instead of stored by wardn.
 	ErrLinksExternal = errors.New("wardn: scope parents are resolved by Config.ParentOf; Link is disabled")

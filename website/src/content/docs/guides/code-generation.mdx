@@ -3,19 +3,22 @@ title: Typo-proof names
 description: Generate Go constants from wardn.yaml so a misspelled permission won't compile.
 ---
 
-wardn already rejects unknown permissions at startup. `wardn gen` goes one step further: a misspelled permission becomes a **compile error**.
+wardn already rejects unknown permissions at startup. `wardn gen` goes one step further: when you use its constants, a misspelled permission is a **compile error**. (A misspelled string literal, such as `Require("loan:aprove")`, still compiles, and is caught at startup instead.)
 
 ## Generate
 
+Add the CLI as a tool of your module, so its version always matches the library's:
+
 ```bash
-wardn gen                      # reads wardn.yaml, writes perm/perm.go
-wardn gen -o internal/authz/names.go
+go get -tool github.com/MogRex-Limited/wardn/cmd/wardn
+go tool wardn gen                      # reads wardn.yaml, writes perm/perm.go
+go tool wardn gen -o internal/authz/names.go
 ```
 
 Or keep it next to the code that uses it:
 
 ```go
-//go:generate wardn gen -f ../wardn.yaml -o perm/perm.go
+//go:generate go tool wardn gen -f ../wardn.yaml -o perm/perm.go
 ```
 
 ## Use
@@ -41,8 +44,8 @@ Descriptions from your policy become doc comments. If two names would become the
 ## Keep it current in CI
 
 ```bash
-wardn gen -check   # fails if perm/perm.go is out of date with wardn.yaml
-wardn check        # fails if wardn.yaml is invalid
+go tool wardn gen -check   # fails if perm/perm.go is out of date with wardn.yaml
+go tool wardn check        # fails if wardn.yaml is invalid
 ```
 
 Nothing in a policy file can inject code into the output: identifiers are built only from characters policy names allow, values are quoted, and descriptions can't contain line breaks.

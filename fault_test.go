@@ -323,8 +323,8 @@ var faultOps = []faultOp{
 	{"DeleteRoleCascade", func(ctx context.Context, fw *faultWorld) error {
 		return fw.w.DeleteRole(WithUser(ctx, "root"), fw.ids["desk"], Cascade())
 	}},
-	{"Link", func(ctx context.Context, fw *faultWorld) error {
-		return fw.w.Link(ctx, branch1, region2) // move b1 into the other organisation
+	{"Move", func(ctx context.Context, fw *faultWorld) error {
+		return fw.w.Move(ctx, branch1, region2) // move b1 into the other organisation
 	}},
 	{"SweepRemove", func(ctx context.Context, fw *faultWorld) error {
 		fw.clock.Advance(2 * time.Hour)

@@ -44,7 +44,7 @@ http.ListenAndServe(":8080", authenticate(mux))
 
 ## Set the scope from the URL
 
-`ScopeFrom(scopeType, id)` tells wardn where the request acts. `wardn.PathValue(name)` reads a path parameter, through Go's standard `r.PathValue`. Both `net/http`'s `ServeMux` and chi (v5.1+) fill it in.
+`ScopeFrom(scopeType, id)` tells wardn where the request acts. `id` is a `func(*http.Request) string` that returns the scope ID; `wardn.PathValue(name)` is the usual one, but any function works, for example one that builds a composite ID. `wardn.PathValue(name)` reads a path parameter, through Go's standard `r.PathValue`. Both `net/http`'s `ServeMux` and chi (v5.1+) fill it in.
 
 - **Place `ScopeFrom` after routing.** With chi, put it inside `r.Route` or `r.With`, where the parameter exists. Placed too early, the ID is empty and every request gets `400`.
 - **The innermost `ScopeFrom` wins.** An organisation route can contain branch routes, each setting its own scope.

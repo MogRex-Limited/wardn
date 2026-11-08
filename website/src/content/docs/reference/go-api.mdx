@@ -30,7 +30,7 @@ The full reference is generated from the code with `go doc github.com/MogRex-Lim
 |---|---|
 | `w.Require(permissions...)` | Middleware: all permissions needed. |
 | `w.RequireAny(permissions...)` | Middleware: one permission needed. |
-| `w.ScopeFrom(scopeType, idFunc)` | Middleware: set the request's scope. |
+| `w.ScopeFrom(scopeType, id func(*http.Request) string)` | Middleware: set the request's scope. |
 | `wardn.PathValue(name)` | Read a path parameter (net/http, chi). |
 | `wardn.WithUser(ctx, id)` / `UserOf(ctx)` | Put or read the signed-in user. |
 | `wardn.WithScope(ctx, s)` / `ScopeOf(ctx)` | Put or read the request's scope. |
@@ -41,13 +41,14 @@ The full reference is generated from the code with `go doc github.com/MogRex-Lim
 | | |
 |---|---|
 | `wardn.NewScope(scopeType, id)` / `wardn.Global` | Build a scope. |
-| `w.Link(ctx, child, parent)` | Record a parent (backend only). |
+| `w.Link(ctx, child, parent)` | Record a parent (backend only). Never changes an existing parent. |
+| `w.Move(ctx, child, newParent)` | Change a parent on purpose. |
 
 ## Managing access (as the user in `ctx`, guarded)
 
 | | |
 |---|---|
-| `w.Assign(ctx, user, role, scope, opts...)` | Give a role; `wardn.From(t)`, `wardn.Until(t)` limit it in time. |
+| `w.Assign(ctx, user, role, scope, opts ...AssignOption)` | Give a role; `wardn.From(t)` and `wardn.Until(t)` are `AssignOption`s that limit it in time. Assigning exactly what is already there changes nothing and isn't audited again. |
 | `w.Revoke(ctx, user, role, scope)` | Take a role away. |
 | `w.CreateRole(ctx, owner, RoleSpec) (CustomRole, error)` | Create a custom role. |
 | `w.UpdateRole(ctx, id, RoleSpec, version)` | Edit one, with conflict detection. |
@@ -73,6 +74,7 @@ The full reference is generated from the code with `go doc github.com/MogRex-Lim
 | `w.RunExpiry(ctx, interval, onError)` | Sweep on a timer. |
 | `w.InvalidateCache(ctx, scopes...)` | After changes made behind wardn's back. |
 | `wardn.NewMemoryCache()` / `wardn.NewMemoryStore()` | In-process cache and store. |
+| `w.Now()` | The time on wardn's clock (`Config.Clock`); use it when computing time windows. |
 
 ## Key types
 

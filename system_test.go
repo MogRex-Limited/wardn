@@ -105,10 +105,20 @@ func TestLinkValidation(t *testing.T) {
 		t.Errorf("invalid parent ID: %v", err)
 	}
 
-	// Relinking moves a branch to another region, and inheritance follows.
+	// Link never moves: a second, different parent is refused, so two
+	// tenants reusing an ID can't capture each other's scopes.
 	assign(t, w, "pat", "org_admin", org1)
 	wantCan(t, w, "pat", "loan:view", branch1, true)
-	if err := w.Link(ctx, branch1, region2); err != nil {
+	if err := w.Link(ctx, branch1, region2); !errors.Is(err, ErrInvalidLink) || !strings.Contains(err.Error(), "use Move") {
+		t.Fatalf("Link to a different parent: %v", err)
+	}
+	wantCan(t, w, "pat", "loan:view", branch1, true)
+	if err := w.Link(ctx, branch1, region1); err != nil { // the same parent again: a no-op
+		t.Fatalf("Link to the same parent: %v", err)
+	}
+
+	// Move changes the parent on purpose, and inheritance follows.
+	if err := w.Move(ctx, branch1, region2); err != nil {
 		t.Fatal(err)
 	}
 	wantCan(t, w, "pat", "loan:view", branch1, false)

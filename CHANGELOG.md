@@ -154,6 +154,33 @@ All notable changes to wardn are documented here. The format follows
   SaaS draft, and the multi-tenancy guide now teaches "authorize first, then
   look up".
 
+- Usability rehearsal (M8): a developer agent with only the documentation
+  built a clinic service and kept a friction log. Fixes from it:
+  - **Security:** `Link` no longer re-parents an already-linked scope; it
+    fails with the new `ErrAlreadyLinked` (409), so two tenants reusing an ID
+    can't move each other's scopes (threat model T27). The new `Move` changes a
+    parent on purpose.
+  - Repeating a change that changes nothing (same assignment and window, or
+    the same parent) is no longer written or audited.
+  - New `w.Now()`, so application code computing time windows uses wardn's
+    (test-controllable) clock.
+  - Docs: the Quick Start's authentication middleware no longer erases the
+    test user (its own test failed before); scope IDs must be unique per type,
+    with the composite-ID pattern; the confused-deputy section is clearer;
+    `go get -tool` for the CLI; `wardntest` options, `AssignOption`, the
+    `ScopeFrom` ID function, event fields and check order are documented.
+
+- Benchmarks (M8): `storetest.Bench` measures any store on a bank-sized
+  dataset (1,000 branches, about 20,000 assignments): single checks, custom
+  roles, denials, ten checks in one request, parallel checks, with and
+  without the cache, and assignments. It runs on the memory store, every SQL
+  database and MongoDB, plus whole HTTP requests in the bank app (`make
+  bench`, `make bench-all`). Results and advice are on the new Performance
+  page. A finding: the default `database/sql` pool more than halves parallel
+  throughput on PostgreSQL, so the stores guide now says to size it.
+- The confused-deputy tests in the bank and SaaS apps are now
+  `TestThreat_T02_ConfusedDeputy`, so T02 is traced like every other threat.
+
 ### Removed
 
 - CodeQL workflow, until the repository is public or GitHub Advanced

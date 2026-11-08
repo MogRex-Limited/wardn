@@ -1,6 +1,6 @@
 // Package storetest is the conformance suite for wardn.Store
-// implementations. A store that passes it behaves correctly and securely
-// with wardn:
+// implementations, and their benchmark suite (Bench). A store that passes
+// the conformance suite behaves correctly and securely with wardn:
 //
 //	func TestMyStore(t *testing.T) {
 //		storetest.Run(t, func(t *testing.T) wardn.Store {

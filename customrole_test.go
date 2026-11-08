@@ -112,7 +112,7 @@ func TestCustomRoleOutsideOwnerSubtreeIgnored(t *testing.T) {
 	r := mustCreate(t, w, org1, RoleSpec{Name: "X", Allow: []string{"loan:view"}, AssignableAt: []string{"branch"}})
 	assign(t, w, "u", r.ID, branch1)
 	wantCan(t, w, "u", "loan:view", branch1, true)
-	if err := w.Link(context.Background(), region1, org2); err != nil { // move the region to another organisation
+	if err := w.Move(context.Background(), region1, org2); err != nil { // move the region to another organisation
 		t.Fatal(err)
 	}
 	wantCan(t, w, "u", "loan:view", branch1, false)

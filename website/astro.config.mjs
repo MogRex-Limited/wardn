@@ -53,6 +53,7 @@ export default defineConfig({
 						{ label: 'Typo-proof names (wardn gen)', slug: 'guides/code-generation' },
 						{ label: 'Choosing a store', slug: 'guides/stores' },
 						{ label: 'Caching across instances', slug: 'guides/caching' },
+						{ label: 'Performance', slug: 'guides/performance' },
 					],
 				},
 				{

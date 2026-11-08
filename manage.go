@@ -307,6 +307,18 @@ func (w *Warden) assign(ctx context.Context, a actor, user, role string, scope S
 	if err := w.guard(ctx, a, scope, PermRolesAssign, r.compiled.allow, r.compiled.deny); err != nil {
 		return err
 	}
+	// Assigning exactly what is already there changes nothing, so it is not
+	// written or audited again: seeding on every start stays quiet.
+	existing, err := w.store.Assignments(ctx, user, []Scope{scope})
+	if err != nil {
+		return fmt.Errorf("wardn: reading current assignments: %w", err)
+	}
+	if slices.ContainsFunc(existing, func(e Assignment) bool {
+		return e.User == user && e.Role == role && e.Scope == scope &&
+			e.StartsAt.Equal(as.StartsAt) && e.ExpiresAt.Equal(as.ExpiresAt)
+	}) {
+		return nil
+	}
 	return w.change(ctx, Event{Type: EventAssigned, Actor: a.id, System: !a.guarded, User: user, Role: role, Scope: scope, StartsAt: as.StartsAt, ExpiresAt: as.ExpiresAt},
 		func() error { return w.store.Assign(ctx, as) })
 }
@@ -584,13 +596,33 @@ func (w *Warden) typeWithin(t string, owner Scope) bool {
 }
 
 // Link records that parent is the parent of child, so roles assigned at
-// parent (and its ancestors) apply in child. Linking again replaces the
-// parent. The parent's type must be the one the policy declares for child.
+// parent (and its ancestors) apply in child. The parent's type must be the
+// one the policy declares for child.
 //
-// Link is plumbing for the application's backend, called when it creates or
-// moves an entity. Never expose it directly to end users: whoever controls
-// links controls inheritance (threat model T11). Every link is audited.
+// Link never changes an existing parent. Linking a scope to the parent it
+// already has does nothing, so it is safe to call on every start. Linking
+// it to a different parent fails with ErrAlreadyLinked (which also matches
+// ErrInvalidLink): two tenants that
+// reuse the same ID ("cardiology" in two hospitals) would otherwise move
+// one tenant's scope under the other's administrators. Use Move to change
+// a parent on purpose.
+//
+// Link is plumbing for the application's backend, called when it creates an
+// entity. Never expose it directly to end users: whoever controls links
+// controls inheritance (threat model T11). Every link is audited.
 func (w *Warden) Link(ctx context.Context, child, parent Scope) error {
+	return w.link(ctx, child, parent, false)
+}
+
+// Move changes child's parent, for example when a branch moves to another
+// region. Roles inherited from the old parent stop applying, and those of
+// the new parent start, on the next check. Moving a scope that has no
+// parent yet links it. Every move is audited.
+func (w *Warden) Move(ctx context.Context, child, newParent Scope) error {
+	return w.link(ctx, child, newParent, true)
+}
+
+func (w *Warden) link(ctx context.Context, child, parent Scope, move bool) error {
 	if w.parentOf != nil {
 		return ErrLinksExternal
 	}
@@ -611,10 +643,28 @@ func (w *Warden) Link(ctx context.Context, child, parent Scope) error {
 		return fmt.Errorf("%w: cannot link %s to %s; a %s's parent must be a %s",
 			ErrInvalidLink, child, parent, child.Type, want)
 	}
+	current, linked, err := w.store.Parent(ctx, child)
+	if err != nil {
+		return fmt.Errorf("wardn: reading current parent: %w", err)
+	}
+	switch {
+	case linked && current == parent:
+		return nil // already so: nothing to change, nothing to audit
+	case linked && !move:
+		return fmt.Errorf("%w (%w): %s is already inside %s; if two tenants use the same ID, make IDs unique (for example \"%s/%s\"); to move it on purpose, use Move",
+			ErrAlreadyLinked, ErrInvalidLink, child, current, current.ID, child.ID)
+	}
 	ev := Event{Type: EventLinked, System: true, Scope: child, Parent: parent}
 	if id, ok := UserOf(ctx); ok {
 		ev.Actor, ev.System = id, false
 	}
 	return w.change(ctx, ev,
 		func() error { return w.store.Link(ctx, child, parent) })
+}
+
+// Now returns the current time on the Warden's clock (Config.Clock). Use it
+// when your code computes a time window, such as Until(w.Now().Add(72 *
+// time.Hour)), so tests that move wardn's clock move yours too.
+func (w *Warden) Now() time.Time {
+	return w.clock.Now()
 }
