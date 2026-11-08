@@ -154,7 +154,7 @@ func validPrefix(p string) bool {
 // Assign implements wardn.Store.
 func (s *Store) Assign(ctx context.Context, a wardn.Assignment) error {
 	now := time.Now().UnixMicro()
-	_, err := s.db.ExecContext(ctx, s.q.assign,
+	err := s.exec(ctx, s.q.assign,
 		a.User, a.Role, a.Scope.Type, a.Scope.ID,
 		startMicros(a.StartsAt), endMicros(a.ExpiresAt), now, now)
 	if err != nil {
@@ -165,7 +165,7 @@ func (s *Store) Assign(ctx context.Context, a wardn.Assignment) error {
 
 // Revoke implements wardn.Store.
 func (s *Store) Revoke(ctx context.Context, user, role string, scope wardn.Scope) error {
-	if _, err := s.db.ExecContext(ctx, s.q.revoke, user, role, scope.Type, scope.ID); err != nil {
+	if err := s.exec(ctx, s.q.revoke, user, role, scope.Type, scope.ID); err != nil {
 		return fmt.Errorf("wardnsql: revoke: %w", err)
 	}
 	return nil
@@ -197,7 +197,7 @@ func (s *Store) Assignments(ctx context.Context, user string, scopes []wardn.Sco
 	}
 	b.WriteString(")")
 
-	rows, err := s.db.QueryContext(ctx, s.d.bind(b.String()), args...)
+	rows, err := s.conn(ctx).QueryContext(ctx, s.d.bind(b.String()), args...)
 	if err != nil {
 		return nil, fmt.Errorf("wardnsql: reading assignments: %w", err)
 	}
@@ -220,7 +220,7 @@ func (s *Store) Assignments(ctx context.Context, user string, scopes []wardn.Sco
 
 // Link implements wardn.Store.
 func (s *Store) Link(ctx context.Context, child, parent wardn.Scope) error {
-	_, err := s.db.ExecContext(ctx, s.q.link, child.Type, child.ID, parent.Type, parent.ID, time.Now().UnixMicro())
+	err := s.exec(ctx, s.q.link, child.Type, child.ID, parent.Type, parent.ID, time.Now().UnixMicro())
 	if err != nil {
 		return fmt.Errorf("wardnsql: link: %w", err)
 	}
@@ -230,7 +230,7 @@ func (s *Store) Link(ctx context.Context, child, parent wardn.Scope) error {
 // Parent implements wardn.Store.
 func (s *Store) Parent(ctx context.Context, child wardn.Scope) (wardn.Scope, bool, error) {
 	var p wardn.Scope
-	err := s.db.QueryRowContext(ctx, s.q.parent, child.Type, child.ID).Scan(&p.Type, &p.ID)
+	err := s.conn(ctx).QueryRowContext(ctx, s.q.parent, child.Type, child.ID).Scan(&p.Type, &p.ID)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return wardn.Scope{}, false, nil
@@ -271,5 +271,6 @@ func fromMicros(v sql.NullInt64) time.Time {
 
 var (
 	_ wardn.Store    = (*Store)(nil)
+	_ wardn.TxStore  = (*Store)(nil)
 	_ wardn.Migrator = (*Store)(nil)
 )

@@ -17,7 +17,7 @@
 | **Fault injection: store** | Every management operation runs once per store call it makes, with that one call failing. A failed change must report an error and must never leave access that neither the old state nor the intended new state grants. | `fault_test.go` |
 | **Fault injection: cache** | The same, with each cache call failing. Afterwards, cached answers must match the store exactly. | `fault_test.go` |
 | **Fault injection: SQL transactions** | A `database/sql` driver wrapper fails each statement, begin and commit in turn. A custom role must always be entirely old or entirely new. | `tests/integration/fault_test.go` |
-| **Mutation testing** | 50 deliberate breaks of specific security rules. The test suite must fail for every one. | `scripts/mutate.py`, `make mutation` |
+| **Mutation testing** | 58 deliberate breaks of specific security rules. The test suite must fail for every one. | `scripts/mutate.py`, `make mutation` |
 | **Fuzzing** | 8 targets, covering policy parsing, names, `Check` inputs, role names, role specs, pagination cursors, cache contents and HTTP paths. Each ran for 90 seconds (about 14 million executions in total), plus a weekly CI campaign of 5 minutes per target. | `scripts/fuzz.sh`, `make fuzz` |
 | **Property tests** | The engine against an independent reference implementation (about 130,000 checks per run). The escalation guard attacked in 300 random worlds. Two instances sharing a cache, checked for staleness after random changes. | `property_test.go`, `guard_property_test.go`, `cache_test.go` |
 
@@ -97,8 +97,8 @@ wardn has no external audit (DESIGN.md D16). This brief is for anyone who review
 - **Highest-value targets:**
   1. `manage.go` (the escalation guard: `guard`, `holds`, `covers`, and every management path);
   2. `check.go` (`grants`, `evaluate`, `chain`);
-  3. `cache.go` and `events.go` (invalidation ordering, sealing);
-  4. `store/sql/roles.go` and `store/mongo/store.go` (atomicity).
+  3. `cache.go`, `events.go` and `tx.go` (invalidation ordering, sealing, and changes inside an application's transaction);
+  4. `store/sql/roles.go`, `store/sql/tx.go` and `store/mongo/store.go` (atomicity, savepoints).
 - **Running everything:** `make check` runs all gates on all modules. `make integration` runs everything against real PostgreSQL, MySQL, MariaDB, MongoDB and Redis in Docker. `make mutation` and `make fuzz FUZZTIME=5m` run the slower checks.
 - **Questions we would most like answered:**
   - Is there any sequence of guarded calls after which someone holds a permission no actor in that sequence held?

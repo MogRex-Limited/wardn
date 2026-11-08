@@ -20,6 +20,7 @@ The full reference is generated from the code with `go doc github.com/MogRex-Lim
 | `w.Can(ctx, user, permission, scope) bool` | Yes or no; `false` on any error. |
 | `w.Check(ctx, user, permission, scope) (Decision, error)` | The decision and its reason. |
 | `w.CanAny(ctx, user, scope, permissions...)` / `CanAll` | One of, or all of, several permissions. |
+| `w.CanEach(ctx, user, permission, scopes) []bool` / `CheckEach` | One permission at many scopes, read together: filter a list. Up to `wardn.MaxCheckEach` scopes. *(v1.1)* |
 | `w.PermissionsOf(ctx, user, scope) ([]string, error)` | Everything the user may do here. |
 | `w.RolesOf(ctx, user, scope) ([]Assignment, error)` | The assignments in effect here, inherited ones included. |
 | `w.WithMemo(ctx) context.Context` | Share store reads within one unit of work. |
@@ -54,6 +55,17 @@ The full reference is generated from the code with `go doc github.com/MogRex-Lim
 | `w.UpdateRole(ctx, id, RoleSpec, version)` | Edit one, with conflict detection. |
 | `w.DeleteRole(ctx, id, wardn.Cascade())` | Delete one; `Cascade` also revokes it. |
 | `w.System()` | The same methods, unguarded, for jobs and setup. |
+
+## Transactions *(v1.1)*
+
+| | |
+|---|---|
+| `store.WithTx(ctx, tx) context.Context` | SQL store: read and write through your `*sql.Tx`. |
+| `w.Transaction(ctx) (context.Context, func(context.Context) error)` | Changes commit with your transaction; call the returned function after it ends. |
+| `wardn.TxStore` | Implemented by stores that support this (`InTx(ctx) bool`). |
+| `wardn.ErrNoTransaction` | A change had one of the two without the other. |
+
+See [changes in your own transaction](/guides/transactions/).
 
 ## Admin screens
 

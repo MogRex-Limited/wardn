@@ -14,7 +14,7 @@ Unit tests show that code does what its author expected. An authorization librar
 | **Escalation-guard attack** | In 300 random worlds, an actor with random roles tries random assignments. Every one allowed is independently confirmed not to escalate. |
 | **Cache staleness** | Two instances share a store and a cache; after every random change, 72,000 answers are checked against the reference. |
 | **Fault injection** | Every write is repeated with each database and cache call failing in turn, including inside SQL transactions. No failure may leave access that neither the old nor the intended state grants, and no role may be left half-written. |
-| **Mutation testing** | 50 deliberate breaks of specific security rules. The test suite must catch every one, so no rule is unprotected. |
+| **Mutation testing** | 58 deliberate breaks of specific security rules. The test suite must catch every one, so no rule is unprotected. |
 | **Fuzzing** | 8 targets (policies, IDs, URLs, role names, role specs, cursors, cache contents, `Check`) ran over 14 million inputs. A weekly campaign continues. |
 | **Real databases** | PostgreSQL, MySQL, MariaDB, SQLite, MongoDB and Redis, in every CI run, through the same 25-check conformance suite. |
 | **Independent review** | A reviewer with only the code and design, not the author's reasoning, set out to break wardn. |

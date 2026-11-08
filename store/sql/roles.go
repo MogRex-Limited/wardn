@@ -21,25 +21,26 @@ func placeholders(n int) string {
 
 // CreateRole implements wardn.Store.
 func (s *Store) CreateRole(ctx context.Context, r wardn.CustomRole) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	err := s.inTx(ctx, func(tx querier) error {
 		_, err := tx.ExecContext(ctx, s.d.bind("INSERT INTO "+s.t.roles+
 			" (id, owner_type, owner_id, name, name_key, description, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"),
 			r.ID, r.Owner.Type, r.Owner.ID, r.Name, r.NameKey, r.Description, r.Version, r.CreatedAt.UnixMicro(), r.UpdatedAt.UnixMicro())
 		if err != nil {
-			return s.nameTakenOr(ctx, r, err)
+			return nameWriteError{err}
 		}
 		return s.writeRoleDetails(ctx, tx, r)
 	})
+	return s.nameTakenOr(ctx, r, err)
 }
 
 // UpdateRole implements wardn.Store.
 func (s *Store) UpdateRole(ctx context.Context, r wardn.CustomRole, expectedVersion int) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	err := s.inTx(ctx, func(tx querier) error {
 		res, err := tx.ExecContext(ctx, s.d.bind("UPDATE "+s.t.roles+
 			" SET name = ?, name_key = ?, description = ?, version = ?, updated_at = ? WHERE id = ? AND version = ?"),
 			r.Name, r.NameKey, r.Description, r.Version, r.UpdatedAt.UnixMicro(), r.ID, expectedVersion)
 		if err != nil {
-			return s.nameTakenOr(ctx, r, err)
+			return nameWriteError{err}
 		}
 		n, err := res.RowsAffected()
 		if err != nil {
@@ -62,25 +63,39 @@ func (s *Store) UpdateRole(ctx context.Context, r wardn.CustomRole, expectedVers
 		}
 		return s.writeRoleDetails(ctx, tx, r)
 	})
+	return s.nameTakenOr(ctx, r, err)
 }
 
-// nameTakenOr returns ErrRoleNameTaken if another role in r's owner has r's
-// name key (the write failed on the unique constraint), and err otherwise.
-// Checking afterwards keeps the store independent of driver error codes;
-// the constraint itself guarantees atomicity.
+// nameWriteError marks a failed write of a role's name, which may have hit
+// the unique name constraint.
+type nameWriteError struct{ err error }
+
+func (e nameWriteError) Error() string { return e.err.Error() }
+func (e nameWriteError) Unwrap() error { return e.err }
+
+// nameTakenOr returns ErrRoleNameTaken if err is a failed name write and
+// another role in r's owner has r's name key (the write failed on the
+// unique constraint). Otherwise it returns err. Checking afterwards keeps
+// the store independent of driver error codes; the constraint itself
+// guarantees atomicity. It runs after the failed write has been rolled
+// back, so it also works inside an application transaction.
 func (s *Store) nameTakenOr(ctx context.Context, r wardn.CustomRole, err error) error {
-	if ctx.Err() != nil {
+	var nw nameWriteError
+	if !errors.As(err, &nw) {
 		return err
+	}
+	if ctx.Err() != nil {
+		return nw.err
 	}
 	var n int
 	q := s.d.bind("SELECT COUNT(*) FROM " + s.t.roles + " WHERE owner_type = ? AND owner_id = ? AND name_key = ? AND id <> ?")
-	if s.db.QueryRowContext(ctx, q, r.Owner.Type, r.Owner.ID, r.NameKey, r.ID).Scan(&n) == nil && n > 0 {
+	if s.conn(ctx).QueryRowContext(ctx, q, r.Owner.Type, r.Owner.ID, r.NameKey, r.ID).Scan(&n) == nil && n > 0 {
 		return wardn.ErrRoleNameTaken
 	}
-	return err
+	return nw.err
 }
 
-func (s *Store) writeRoleDetails(ctx context.Context, tx *sql.Tx, r wardn.CustomRole) error {
+func (s *Store) writeRoleDetails(ctx context.Context, tx querier, r wardn.CustomRole) error {
 	insertRule := s.d.bind("INSERT INTO " + s.t.roleRules + " (role_id, position, effect, permission) VALUES (?, ?, ?, ?)")
 	for i, p := range r.Allow {
 		if _, err := tx.ExecContext(ctx, insertRule, r.ID, i, "allow", p); err != nil {
@@ -98,7 +113,7 @@ func (s *Store) writeRoleDetails(ctx context.Context, tx *sql.Tx, r wardn.Custom
 
 // DeleteRole implements wardn.Store.
 func (s *Store) DeleteRole(ctx context.Context, id string) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	return s.inTx(ctx, func(tx querier) error {
 		for _, table := range []string{s.t.roleRules, s.t.roleAssignable} {
 			if _, err := tx.ExecContext(ctx, s.d.bind("DELETE FROM "+table+" WHERE role_id = ?"), id); err != nil {
 				return err
@@ -144,7 +159,7 @@ func (s *Store) RolesOwnedBy(ctx context.Context, owners []wardn.Scope) ([]wardn
 // loadRoles reads roles matching where (built only from fixed fragments;
 // values are in args) together with their rules and assignable types.
 func (s *Store) loadRoles(ctx context.Context, where string, args []any) ([]wardn.CustomRole, error) {
-	rows, err := s.db.QueryContext(ctx, s.d.bind("SELECT id, owner_type, owner_id, name, name_key, description, version, created_at, updated_at FROM "+
+	rows, err := s.conn(ctx).QueryContext(ctx, s.d.bind("SELECT id, owner_type, owner_id, name, name_key, description, version, created_at, updated_at FROM "+
 		s.t.roles+" WHERE "+where+" ORDER BY id"), args...)
 	if err != nil {
 		return nil, fmt.Errorf("wardnsql: reading roles: %w", err)
@@ -209,7 +224,7 @@ func (s *Store) loadRoles(ctx context.Context, where string, args []any) ([]ward
 }
 
 func (s *Store) eachRow(ctx context.Context, query string, args []any, fn func(*sql.Rows) error) error {
-	rows, err := s.db.QueryContext(ctx, s.d.bind(query), args...)
+	rows, err := s.conn(ctx).QueryContext(ctx, s.d.bind(query), args...)
 	if err != nil {
 		return err
 	}
@@ -225,7 +240,7 @@ func (s *Store) eachRow(ctx context.Context, query string, args []any, fn func(*
 // RoleInUse implements wardn.Store.
 func (s *Store) RoleInUse(ctx context.Context, role string) (bool, error) {
 	var one int
-	err := s.db.QueryRowContext(ctx, s.d.bind("SELECT 1 FROM "+s.t.assignments+" WHERE role = ? LIMIT 1"), role).Scan(&one)
+	err := s.conn(ctx).QueryRowContext(ctx, s.d.bind("SELECT 1 FROM "+s.t.assignments+" WHERE role = ? LIMIT 1"), role).Scan(&one)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return false, nil
@@ -237,7 +252,7 @@ func (s *Store) RoleInUse(ctx context.Context, role string) (bool, error) {
 
 // RevokeRole implements wardn.Store.
 func (s *Store) RevokeRole(ctx context.Context, role string) error {
-	if _, err := s.db.ExecContext(ctx, s.d.bind("DELETE FROM "+s.t.assignments+" WHERE role = ?"), role); err != nil {
+	if err := s.exec(ctx, s.d.bind("DELETE FROM "+s.t.assignments+" WHERE role = ?"), role); err != nil {
 		return fmt.Errorf("wardnsql: revoking role: %w", err)
 	}
 	return nil
@@ -313,7 +328,7 @@ func (s *Store) MarkExpiryReported(ctx context.Context, as []wardn.Assignment) e
 	now := time.Now().UnixMicro()
 	update := s.d.bind("UPDATE " + s.t.assignments + " SET expiry_reported_at = ?" +
 		" WHERE user_id = ? AND role = ? AND scope_type = ? AND scope_id = ? AND expires_at = ?")
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	return s.inTx(ctx, func(tx querier) error {
 		for _, a := range as {
 			if _, err := tx.ExecContext(ctx, update, now, a.User, a.Role, a.Scope.Type, a.Scope.ID, endMicros(a.ExpiresAt)); err != nil {
 				return fmt.Errorf("wardnsql: marking expiry: %w", err)
@@ -326,24 +341,11 @@ func (s *Store) MarkExpiryReported(ctx context.Context, as []wardn.Assignment) e
 // RevokeExpired implements wardn.Store: one conditional DELETE, so an
 // assignment given a new window meanwhile is left alone.
 func (s *Store) RevokeExpired(ctx context.Context, a wardn.Assignment) error {
-	_, err := s.db.ExecContext(ctx, s.d.bind("DELETE FROM "+s.t.assignments+
+	err := s.exec(ctx, s.d.bind("DELETE FROM "+s.t.assignments+
 		" WHERE user_id = ? AND role = ? AND scope_type = ? AND scope_id = ? AND expires_at = ?"),
 		a.User, a.Role, a.Scope.Type, a.Scope.ID, endMicros(a.ExpiresAt))
 	if err != nil {
 		return fmt.Errorf("wardnsql: removing expired assignment: %w", err)
 	}
 	return nil
-}
-
-// inTx runs fn in a transaction, committing if it succeeds.
-func (s *Store) inTx(ctx context.Context, fn func(*sql.Tx) error) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback() //nolint:errcheck // no-op after Commit
-	if err := fn(tx); err != nil {
-		return err
-	}
-	return tx.Commit()
 }

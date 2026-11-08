@@ -1,6 +1,6 @@
 ---
 title: Check access in code
-description: Can, Check, CanAny and CanAll, showing and hiding actions, and per-request memoisation.
+description: Can, Check, CanAny and CanAll, filtering lists with CanEach, showing and hiding actions, and per-request memoisation.
 ---
 
 Middleware covers routes. Inside handlers, services and background jobs, check directly.
@@ -37,6 +37,28 @@ w.CanAll(ctx, userID, branch, "loan:create", "loan:view")  // every one
 ```
 
 An undefined permission anywhere in the list makes both return `false`. `CanAll` with an empty list returns `false`.
+
+## Filter a list
+
+To show only the items a user may see, such as the products in an organisation, check them all at once:
+
+```go
+scopes := make([]wardn.Scope, len(products))
+for i, p := range products {
+	scopes[i] = wardn.NewScope("product", p.ID)
+}
+allowed := w.CanEach(ctx, userID, "product:view", scopes) // one bool per scope, in order
+visible := products[:0]
+for i, p := range products {
+	if allowed[i] {
+		visible = append(visible, p)
+	}
+}
+```
+
+`CanEach` reads the user's assignments for every scope and its ancestors together: a few queries for the whole list, not a few per item. `CheckEach` returns a `Decision` per scope, with the same reasons as `Check`. Any error, such as an invalid scope or more than `wardn.MaxCheckEach` (1,000) scopes, denies every entry, so page long lists.
+
+Filtering in Go suits lists you have already loaded and paged. When the list is long and most items are hidden, filter in your query instead, for example by joining the products to the user's grants, and use `CanEach` as the check on what you return.
 
 ## Show and hide actions in the UI
 

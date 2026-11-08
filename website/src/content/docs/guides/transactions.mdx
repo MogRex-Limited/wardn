@@ -1,0 +1,104 @@
+---
+title: Changes in your own transaction
+description: Assign roles, create custom roles and link scopes inside your application's database transaction, so access commits or rolls back with everything else.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Adding a member to an organisation usually writes several things: your own `members` row, an audit record, perhaps an outbox message for a welcome email, and wardn's role assignment. They should all happen, or none of them should.
+
+With the SQL store, wardn can write inside **your** transaction:
+
+```go
+tx, err := db.BeginTx(ctx, nil)
+if err != nil {
+	return err
+}
+defer tx.Rollback()
+
+ctx, ended := w.Transaction(store.WithTx(ctx, tx))
+
+if _, err := tx.ExecContext(ctx, `INSERT INTO members (org_id, user_id) VALUES ($1, $2)`, orgID, userID); err != nil {
+	return err
+}
+if err := w.Assign(ctx, userID, "agent", product); err != nil {
+	return err // the member row is rolled back too
+}
+
+err = tx.Commit()
+if endErr := ended(ctx); endErr != nil {
+	log.Warn("wardn cache invalidation failed", "err", endErr)
+}
+return err
+```
+
+Two calls set it up:
+
+| Call | What it does |
+|---|---|
+| `store.WithTx(ctx, tx)` | The store reads and writes through `tx` instead of starting its own transaction. `tx` must be on the store's database. |
+| `w.Transaction(ctx)` | Tells wardn the changes commit later, and returns `ended`. Call `ended` once the transaction is over, after a commit or a rollback. |
+
+If your code opens transactions through a helper that commits for you, call `w.Transaction` around the helper and `store.WithTx` inside it, then call `ended` after the helper returns. Calling `ended` inside the callback would run it before the commit:
+
+```go
+wctx, ended := w.Transaction(ctx)
+err := inTx(wctx, func(tx *sql.Tx) error {
+	return w.Assign(store.WithTx(wctx, tx), userID, "agent", product)
+})
+_ = ended(ctx) // the helper has committed or rolled back
+```
+
+Everything wardn offers works inside: `Assign`, `Revoke`, `Link`, `Move`, `CreateRole`, `UpdateRole`, `DeleteRole`, and checks such as `Can`. The escalation guard and `OnChange` run as usual. A check inside the transaction sees the transaction's own uncommitted changes. A check outside it doesn't see them until you commit.
+
+## What wardn does for you
+
+- **Savepoints.** Each of wardn's writes runs in a savepoint. If one fails, for example a custom role whose name is taken (`ErrRoleNameTaken`), wardn rolls back to the savepoint. Your transaction stays usable, which matters on PostgreSQL, where a failed statement otherwise aborts the whole transaction.
+- **No uncommitted data in the cache.** Inside the transaction, wardn neither reads nor fills the shared cache or the request memo. Uncommitted access can never reach another request, even if the transaction rolls back.
+- **Invalidation at the end.** The cache is invalidated before each change and again when you call `ended`, so once the transaction commits, no instance serves the old state.
+
+<Aside type="caution" title="Always call ended">
+If `ended` isn't called, other instances may keep serving the state from before the commit until their cache entries expire (`CacheTTL`, five seconds by default). Without a cache, `ended` has nothing to do, but calling it costs nothing and keeps the code right if you add a cache later.
+</Aside>
+
+## Mistakes wardn catches
+
+- **Forgetting `w.Transaction`.** A change made with `store.WithTx` but without `w.Transaction` fails with `wardn.ErrNoTransaction` before anything is written or audited. wardn couldn't otherwise keep its cache in step with your commit.
+- **Forgetting `store.WithTx`.** A change made with `w.Transaction` alone would quietly write outside your transaction, so it also fails with `ErrNoTransaction`.
+- **Sweeping expiries inside a transaction.** `SweepExpired` manages its own writes and refuses a transaction context.
+
+## Your audit hook in the same transaction
+
+`OnChange` receives the same `ctx`. If your audit log lives in the same database, write it with the same transaction, and the audit record commits or rolls back with the change it describes:
+
+```go
+OnChange: func(ctx context.Context, e wardn.Event) error {
+	tx, ok := txFrom(ctx) // your own helper: the *sql.Tx you put in ctx
+	if !ok {
+		return writeAudit(ctx, db, e)
+	}
+	return writeAudit(ctx, tx, e)
+},
+```
+
+`OnChange` still runs before the write and can veto it. If the write then fails, it is called again with `Event.Err` set, and wardn has already rolled back to its savepoint, so that second write works too.
+
+## Using pgx
+
+wardn's SQL store uses `database/sql`. If your application uses pgx directly, open a `*sql.DB` over the same pool with `stdlib.OpenDBFromPool(pool)` (package `github.com/jackc/pgx/v5/stdlib`). A transaction can then be shared:
+
+```go
+conn, err := sqlDB.Conn(ctx)          // one connection from the shared pool
+tx, err := conn.BeginTx(ctx, nil)     // the transaction wardn uses
+err = conn.Raw(func(dc any) error {   // the same connection, as pgx
+	pgxConn := dc.(*stdlib.Conn).Conn()
+	// run your pgx or sqlc queries on pgxConn: they are inside tx
+	return nil
+})
+```
+
+Both run on one database connection, and PostgreSQL transactions belong to the connection, so the pgx queries and wardn's writes commit together.
+
+## Other stores
+
+Transactions are available in the SQL store (PostgreSQL, MySQL, MariaDB, SQLite). A store opts in by implementing `wardn.TxStore`. The MongoDB store doesn't yet.

@@ -194,10 +194,10 @@ Database servers ran on the same machine. Run `make bench` or `make bench-all` t
 
 A flaw in an authorization library is a flaw in every product that uses it, so wardn is tested the way an attacker thinks:
 
-- A [threat model](docs/THREAT_MODEL.md) of 27 threats, **each with its own `TestThreat_` test**.
+- A [threat model](docs/THREAT_MODEL.md) of 28 threats, **each with its own `TestThreat_` test**.
 - A property test that checks about 130,000 decisions per run against an independent reference implementation, and another that attacks the escalation guard in random worlds.
 - Fault injection on every store, cache and SQL write path. Any failure must deny, never allow.
-- 50 deliberately broken security rules, every one caught by the test suite (`make mutation`), plus 8 fuzz targets. Both run every week.
+- 58 deliberately broken security rules, every one caught by the test suite (`make mutation`), plus 8 fuzz targets. Both run every week.
 - An [internal security review](docs/SECURITY_REVIEW.md) and an API review before v1.0. Every finding is fixed and has a regression test. There has been no external audit ([decision D16](docs/DESIGN.md)).
 - Signed releases. The CLI binaries are reproducible, with checksums and Sigstore build provenance.
 
