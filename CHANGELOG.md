@@ -180,6 +180,12 @@ All notable changes to wardn are documented here. The format follows
   throughput on PostgreSQL, so the stores guide now says to size it.
 - The confused-deputy tests in the bank and SaaS apps are now
   `TestThreat_T02_ConfusedDeputy`, so T02 is traced like every other threat.
+- Clock skew (threat model T19) is tested and documented: two instances
+  sharing a store and cache, one with a slow clock, are wrong by exactly the
+  skew and no longer. The time-limited access guide explains what skew does.
+  The route-audit and MongoDB operator-injection tests are renamed
+  `TestThreat_T17_...` and `TestThreat_T26_...`, so every threat now has a
+  `TestThreat_` test.
 
 ### Removed
 

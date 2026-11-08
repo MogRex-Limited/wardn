@@ -115,9 +115,9 @@ func TestNewMigratesAutomatically(t *testing.T) {
 	}
 }
 
-// TestOperatorInjection: IDs that look like query operators are plain
+// IDs that look like query operators are plain
 // strings, never interpreted.
-func TestOperatorInjection(t *testing.T) {
+func TestThreat_T26_OperatorInjection(t *testing.T) {
 	client := connect(t)
 	s := migrated(t, freshDB(t, client))
 	ctx := context.Background()

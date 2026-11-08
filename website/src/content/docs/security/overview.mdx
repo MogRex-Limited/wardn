@@ -32,7 +32,7 @@ wardn decides who can do what in every product that uses it. A flaw in wardn wou
 - **The database is protected.** Anyone who can write to wardn's tables can grant themselves anything.
 - **`Link` and `ParentOf` reflect the truth.** Whoever controls links controls inheritance. Never expose `Link` to end users.
 - **Shared caches are private** and configured with a secret. Entries are signed, so the cache can't forge access, but it must still not evict wardn's counters.
-- **Clocks are synchronised** (NTP), for time-limited access.
+- **Clocks are synchronised** (NTP), for time-limited access. A skewed server is wrong by its skew, no more ([Server clocks](/guides/time-limited-access/#server-clocks)).
 
 ## What wardn doesn't cover
 
