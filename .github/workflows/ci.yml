@@ -108,7 +108,11 @@ jobs:
 
   integration:
     name: Integration (real databases)
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: MongoDB 8.0 refuses to start on Linux
+    # kernels 6.19+ (SERVER-121912, a tcmalloc/rseq crash), which
+    # ubuntu-latest moved to with Ubuntu 26. Move on once a MongoDB 8.0
+    # release supports them.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     # Images pinned by digest; keep in sync with tests/integration/compose.yaml.
     services:
