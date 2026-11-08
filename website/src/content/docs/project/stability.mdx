@@ -1,0 +1,42 @@
+---
+title: Stability promise
+description: What stays compatible across every v1 release of wardn, and how that is enforced.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+From v1.0.0, upgrading wardn within v1 should be safe and boring: `go get -u`, run your tests, deploy. Anything that would break code, data or behaviour that relies on v1.0.0 waits for v2. We expect never to need a v2.
+
+## What stays compatible
+
+- **Your code compiles.** This covers the Go API of `wardn`, `wardntest`, `storetest`, `cachetest`, `wardnsql`, `wardnmongo` and `wardnredis`. Every change is compared automatically with the latest v1 release.
+- **Decisions don't change.** The [evaluation rules](/concepts/evaluation/) are fixed. With the same policy and assignments, an allowed check stays allowed, and a denied one stays denied.
+- **Your policy file keeps loading**, with the same meaning. New optional keys may appear. A file that uses them needs the release that added them.
+- **Names stored elsewhere stay the same.** This covers JSON field names, [audit event types](/guides/audit/), the built-in permissions `wardn:roles.assign` and `wardn:roles.manage`, the [sentinel errors and their HTTP status codes](/reference/errors/), and the default error responses.
+- **Your database keeps working.** Within v1, schema upgrades only add tables, columns and indexes. Instances still on an older v1 keep running while a newer one rolls out.
+- **Your custom store or cache keeps compiling.** No method is added to `Store` or `Cache` within v1. New capabilities arrive as optional interfaces, and stores without them keep working.
+- **The CLI** keeps its commands, flags, exit codes, and the names `wardn gen` generates.
+
+## What may change
+
+- **Wording:** error messages, `Decision.Reason`, and CLI and log output. Match errors with `errors.Is` and `errors.As`, never on their text.
+- **The cache's contents.** Releases sharing a cache never read each other's entries.
+- **Performance** and the database queries wardn makes.
+- **Supported Go versions.** wardn supports the two Go releases that still receive security fixes.
+
+## Exceptions
+
+- **Security fixes.** If staying compatible would leave you exposed, the fix ships anyway, in a minor or patch release. Go itself does the same. The changelog lists every such fix under **Security**, with what you need to do.
+- **Bug fixes.** Behaviour that contradicts the documentation is a bug, and fixing it is not a breaking change.
+
+## Rolling back
+
+<Aside type="caution">
+An older release **refuses to start** against a database that a newer release has upgraded (`ErrSchemaTooNew`), so it can never misread data it doesn't understand. To roll back across a schema change, restore the database too, or roll forward with a fix. The changelog says which releases change the schema.
+</Aside>
+
+## Deprecation
+
+Nothing public is removed in v1. Anything superseded is marked `Deprecated:` with its replacement, keeps working, and is listed in the changelog. Your editor and `staticcheck` will point you to the replacement.
+
+The full policy, including the maintainers' rules, is [`docs/STABILITY.md`](https://github.com/MogRex-Limited/wardn/blob/main/docs/STABILITY.md).

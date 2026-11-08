@@ -42,7 +42,7 @@ The full reference is generated from the code with `go doc github.com/MogRex-Lim
 |---|---|
 | `wardn.NewScope(scopeType, id)` / `wardn.Global` | Build a scope. |
 | `w.Link(ctx, child, parent)` | Record a parent (backend only). Never changes an existing parent. |
-| `w.Move(ctx, child, newParent)` | Change a parent on purpose. |
+| `w.Move(ctx, child, newParent)` | Change a parent on purpose. Audited as `scope.moved`, with the old parent. |
 
 ## Managing access (as the user in `ctx`, guarded)
 

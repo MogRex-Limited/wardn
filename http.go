@@ -40,9 +40,9 @@ func (e *DeniedError) Unwrap() error { return ErrDenied }
 // no user is authenticated; 403 when denied or when the escalation guard
 // refuses; 400 for invalid input; 404 for an unknown custom role (also what
 // an actor without wardn:roles.manage sees for an existing one); 409 for an
-// edit conflict, a taken name or a role still in use; and 500 for anything
-// else, such as a store failure. Admin APIs can use it for management
-// errors too.
+// edit conflict, a taken name, a role still in use or a scope already
+// linked elsewhere; and 500 for anything else, such as a store failure.
+// Admin APIs can use it for management errors too.
 func HTTPStatus(err error) int {
 	switch {
 	case err == nil:

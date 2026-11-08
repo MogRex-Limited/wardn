@@ -6,7 +6,9 @@ package wardn
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -318,5 +320,77 @@ func TestAssignIsQuietWhenNothingChanges(t *testing.T) {
 	}
 	if assigned != 2 {
 		t.Fatalf("%d assignment events, want 2 (the first assignment and the window change)", assigned)
+	}
+}
+
+// Found in the M9 API review: a move was audited as a plain link, with no
+// record of where the scope came from.
+func TestMoveIsAuditedWithThePreviousParent(t *testing.T) {
+	var events []Event
+	w, _ := newBank(t, func(c *Config) {
+		c.OnChange = func(_ context.Context, e Event) error { events = append(events, e); return nil }
+	})
+	ctx := WithUser(context.Background(), "ops")
+	events = nil
+	if err := w.Move(ctx, branch1, region2); err != nil {
+		t.Fatal(err)
+	}
+	b9 := NewScope("branch", "b9")
+	if err := w.Move(ctx, b9, region1); err != nil { // no parent yet: a link
+		t.Fatal(err)
+	}
+	if err := w.Move(ctx, b9, region1); err != nil { // already there: nothing
+		t.Fatal(err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("%d events, want 2: %+v", len(events), events)
+	}
+	if e := events[0]; e.Type != EventMoved || e.Scope != branch1 || e.Parent != region2 || e.PreviousParent != region1 || e.Actor != "ops" {
+		t.Errorf("move: %+v", e)
+	}
+	if e := events[1]; e.Type != EventLinked || e.Scope != b9 || e.Parent != region1 || !e.PreviousParent.IsGlobal() {
+		t.Errorf("first move of an unlinked scope: %+v", e)
+	}
+}
+
+// Found in the M9 API review: Event had no JSON names, unlike every other
+// public type, and its error marshalled as {}. Audit trails are written as
+// JSON, so these names are part of the stable API.
+func TestEventJSONIsStable(t *testing.T) {
+	e := Event{
+		Type: EventMoved, Actor: "ops", At: t0, Scope: branch1, Parent: region2, PreviousParent: region1,
+		Err: errors.New("store unavailable"),
+	}
+	got, err := json.Marshal(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = `{"type":"scope.moved","actor":"ops","system":false,"at":"2026-11-09T09:00:00Z",` +
+		`"scope":{"type":"branch","id":"b1"},"parent":{"type":"region","id":"r2"},` +
+		`"previous_parent":{"type":"region","id":"r1"},"error":"store unavailable"}`
+	if string(got) != want {
+		t.Fatalf("JSON:\n got %s\nwant %s", got, want)
+	}
+	var back Event
+	if err := json.Unmarshal(got, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.Err == nil || back.Err.Error() != e.Err.Error() {
+		t.Fatalf("Err round trip: %v", back.Err)
+	}
+	back.Err, e.Err = nil, nil
+	if !reflect.DeepEqual(back, e) {
+		t.Fatalf("round trip:\n got %+v\nwant %+v", back, e)
+	}
+
+	// A role event carries the role, and no fields of other event types.
+	role := CustomRole{ID: "cr-1", Owner: org1, Name: "Desk", Allow: []string{"loan:view"}, Version: 1, CreatedAt: t0, UpdatedAt: t0}
+	if got, err = json.Marshal(Event{Type: EventRoleCreated, System: true, Role: "cr-1", Scope: org1, After: &role}); err != nil {
+		t.Fatal(err)
+	}
+	for _, absent := range []string{`"user"`, `"parent"`, `"starts_at"`, `"before"`, `"error"`, `"actor"`} {
+		if strings.Contains(string(got), absent) {
+			t.Errorf("role event has %s: %s", absent, got)
+		}
 	}
 }

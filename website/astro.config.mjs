@@ -90,6 +90,7 @@ export default defineConfig({
 					items: [
 						{ label: 'Design decisions', slug: 'project/decisions' },
 						{ label: 'Roadmap', slug: 'project/roadmap' },
+						{ label: 'Stability promise', slug: 'project/stability' },
 						{ label: 'Contributing', slug: 'project/contributing' },
 					],
 				},

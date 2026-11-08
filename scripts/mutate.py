@@ -94,6 +94,12 @@ MUTANTS = [
     # Cache
     ("cache.go", "moving a scope does not invalidate tenants",
      "return []string{counterLinks, oldRoot, newRoot}, nil", "return []string{counterLinks, oldRoot[:0], newRoot[:0]}, nil"),
+    ("cache.go", "a move does not invalidate like a link (M9 API review)",
+     "case EventLinked, EventMoved:", "case EventLinked:"),
+    ("manage.go", "a move is audited as a link, losing the old parent (M9 API review)",
+     "ev.Type, ev.PreviousParent = EventMoved, current", "ev.Type, ev.PreviousParent = EventLinked, Scope{}"),
+    ("events.go", "an audit event's error is left out of its JSON (M9 API review)",
+     "out.Error = e.Err.Error()", "_ = e.Err.Error()"),
     ("events.go", "no cache invalidation after the write",
      "if err := w.cache.Incr(ctx, counters); err != nil {\n\t\t\tcacheErr = ",
      "if err := error(nil); err != nil {\n\t\t\tcacheErr = "),
