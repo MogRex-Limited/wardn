@@ -19,7 +19,7 @@ docker build -t wardn-docs .
 docker run --rm -p 3002:3002 wardn-docs
 ```
 
-`dist/` is also a plain static site that any web server can host. On a host whose Node.js is too old for Astro and can't be changed, use `sh website/build.sh` as the build command: it downloads a pinned, checksum-verified Node.js for the build. It becomes public with the open-source milestone (M10).
+`dist/` is also a plain static site that any web server can host. On a host whose Node.js is too old for Astro and can't be changed, use `sh website/build.sh` as the build command: it downloads a pinned, checksum-verified Node.js for the build. On a host that runs a process rather than a container, start the site with `node website/serve.mjs`: a dependency-free static server with the same security headers as `nginx.conf`, on `PORT` (default 3002). It becomes public with the open-source milestone (M10).
 
 ## Writing guidelines
 
