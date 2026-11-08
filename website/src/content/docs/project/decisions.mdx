@@ -7,7 +7,7 @@ wardn is opinionated. These are its most important decisions. The full design do
 
 | Decision | Choice | Why |
 |---|---|---|
-| **What wardn models** | Roles and permissions in a product-defined scope tree | Covers the needs of nearly every product without a policy language. Relationship graphs at Google scale are left to OpenFGA and SpiceDB. |
+| **What wardn models** | Roles and permissions in a product-defined scope tree | Covers the needs of nearly every product without a policy language. Sharing individual objects across millions of them is a different job, for OpenFGA or SpiceDB alongside wardn. |
 | **Where it runs** | A library inside your application | No server to operate, no network hop per check. |
 | **Permissions vs roles** | Permissions are code; roles are data | Admins combine what developers made checkable, never more. |
 | **Fixed evaluation rules** | Default deny, deny wins, errors deny | The same meaning in every product; nothing to misconfigure. |

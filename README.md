@@ -38,7 +38,7 @@ organisation:acme                     ada  → org_admin      (everything in Acm
 
 - [Quick start](#quick-start)
 - [Features](#features)
-- [How it compares](#how-it-compares)
+- [Choosing the right tool](#choosing-the-right-tool)
 - [Supported platforms](#supported-platforms)
 - [Examples](#examples)
 - [Performance](#performance)
@@ -134,18 +134,19 @@ The [full quick start](website/src/content/docs/getting-started/quick-start.mdx)
 | **Caching** | Off by default. An opt-in cache, in memory or shared through Redis or Valkey, caches data, never decisions, with signed entries and instant invalidation on every instance. |
 | **Testing** | `wardntest` for your tests, `AuditRoutes` to catch unprotected routes, and conformance suites (`storetest`, `cachetest`) for your own store or cache. |
 
-## How it compares
+## Choosing the right tool
 
 | | **wardn** | Casbin | OpenFGA / SpiceDB | Home-grown |
-|---|:---:|:---:|:---:|:---:|
-| Runs inside your app (no extra server) | ✓ | ✓ | — | ✓ |
-| No policy language to learn | ✓ | — | — | ✓ |
-| Product-defined tenancy and hierarchy | ✓ | DIY | ✓ | DIY |
-| Admin-created roles with an escalation guard | ✓ | DIY | DIY | rarely |
-| Time-limited access, audit hooks | ✓ | DIY | partly | rarely |
-| Relationship graphs at Google scale | — | — | ✓ | — |
+|---|---|---|---|---|
+| **Built for** | Roles and tenancy inside a Go product | General policy models, in many languages | Sharing individual objects across millions of them (Zanzibar-style) | A product's first few checks |
+| **Runs** | Inside your app, on your database | Inside your app | As a separate service | Inside your app |
+| **Your team learns** | One YAML file | Casbin's model language | A modelling language and relationship tuples | Nothing new, at first |
+| **Tenancy and hierarchy** | Built in | Domains built in; scope trees are yours to build | Built in, as relationships | Yours to build |
+| **Admin-created roles that can't escalate** | Built in | Yours to build | Yours to build | Rarely done |
+| **Time-limited access** | Built in | Yours to build | Supported | Rarely done |
+| **Audit of every change** | Built in, and can block a change | Yours to build | Change history API | Rarely done |
 
-If your core need is relationships between millions of objects, use OpenFGA or SpiceDB. If you need roles and permissions inside a Go product, done right in an afternoon, use wardn.
+Different tools for different jobs. wardn is built for roles and tenancy inside a Go product: no extra service, no new language, and the safety rules built in. OpenFGA and SpiceDB are built for sharing individual objects between people and groups at very large scale. They work well together: many products use wardn for who runs what in the organisation, and a relationship service for who can see which document. The [Learn](website/src/content/docs/learn/models.mdx) pages explain the models in depth.
 
 ## Supported platforms
 

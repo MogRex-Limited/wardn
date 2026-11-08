@@ -57,6 +57,8 @@ wardn is **RBAC with scopes**, designed to cover what most products need without
 - Hierarchy through stored links or your own data, which covers the most common relationship: *this belongs to that*.
 - Time windows on assignments, the most common attribute rule.
 
-It is **not** a relationship graph for sharing millions of individual objects between people and groups. If that is your core need, use OpenFGA or SpiceDB. Attribute rules such as amount limits aren't built in yet; until then, check them in your code after wardn's check.
+Sharing individual objects between people and groups, across millions of objects, is a different job. Relationship services such as OpenFGA and SpiceDB are built for it, and they work well alongside wardn: wardn for who runs what in the organisation, a relationship service for who can see which document.
+
+Attribute rules such as amount limits are planned as an optional module. Today, check them in your code right after wardn's check.
 
 <LinkCard title="Next: libraries, policy engines and servers" description="Where the decision runs, and what that costs." href="/learn/architectures/" />
