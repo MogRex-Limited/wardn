@@ -46,6 +46,7 @@ organisation:acme                     ada  → org_admin      (everything in Acm
 - [Stability](#stability)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
+- [Author](#author)
 - [License](#license)
 
 ## Quick start
@@ -232,6 +233,10 @@ make integration   # everything against real PostgreSQL, MySQL, MariaDB, MongoDB
 ```
 
 Maintainers: releases and repository settings are in [docs/MAINTAINING.md](docs/MAINTAINING.md).
+
+## Author
+
+wardn was designed and built by **Abakpa Dominic** ([@DT-GAMER](https://github.com/DT-GAMER)), who maintains it with the code owners listed in [`.github/CODEOWNERS`](.github/CODEOWNERS).
 
 ## License
 
