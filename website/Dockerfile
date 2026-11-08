@@ -3,7 +3,7 @@
 #   docker run -p 8080:8080 wardn-docs
 # Images are pinned by digest; refresh them deliberately.
 
-FROM node:24-alpine@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 AS build
+FROM node:25-alpine@sha256:bdf2cca6fe3dabd014ea60163eca3f0f7015fbd5c7ee1b0e9ccb4ced6eb02ef4 AS build
 WORKDIR /site
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
