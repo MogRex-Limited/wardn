@@ -1,0 +1,96 @@
+---
+title: Custom roles and admin screens
+description: Let administrators create, edit, assign and delete roles safely, with every API an admin screen needs.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Most serious products need a "Create role" button. wardn gives you the whole lifecycle, and the [escalation guard](/guides/escalation-guard/) makes it safe to expose.
+
+All the calls below act **as the signed-in user** in `ctx` (set by your authentication middleware with `wardn.WithUser`). Without one, they fail with `ErrUnauthenticated`.
+
+## The screens and the calls behind them
+
+### "Create role"
+
+Show the catalog so the admin can pick permissions, then create the role:
+
+```go
+catalog := w.Catalog() // every permission with its description, sorted
+
+role, err := w.CreateRole(ctx, org, wardn.RoleSpec{
+	Name:         "Senior Teller",
+	Description:  "Tellers who can also approve loans",
+	Allow:        []string{"customer:view", "loan:create", "loan:approve"},
+	AssignableAt: []string{"branch"}, // default: the owner's own type
+})
+```
+
+The admin needs `wardn:roles.manage` at `org` and must hold every permission they put in the role.
+
+### "Roles" list
+
+```go
+roles, err := w.Roles(ctx, branch) // everything assignable here: system roles first, then custom
+```
+
+Each `RoleInfo` says whether it's custom, who owns it (`Owner`), what it grants, and its `Version`.
+
+### "Edit role"
+
+```go
+role, err := w.CustomRole(ctx, roleID) // fill the form; keep role.Version
+
+updated, err := w.UpdateRole(ctx, roleID, spec, role.Version)
+if errors.Is(err, wardn.ErrConflict) {
+	// Someone else saved first: reload and let the admin re-apply their change.
+}
+```
+
+Editing changes the role for everyone who holds it, at once. The admin must hold every permission in both the old and the new version, so nobody can strip a role they couldn't have granted.
+
+### "Assign role" picker
+
+Offer only what this admin is allowed to hand out:
+
+```go
+choices, err := w.AssignableRoles(ctx, branch)
+err = w.Assign(ctx, staffID, choice.ID, branch, wardn.Until(endOfContract))
+```
+
+### "Members" page
+
+```go
+page, next, err := w.Members(ctx, branch, cursor, 50) // who holds which role here, 50 at a time
+```
+
+Pass `""` as the cursor for the first page, then the returned `next` until it is empty. `Members` lists assignments made at exactly this scope, not inherited ones.
+
+### "Delete role"
+
+```go
+err := w.DeleteRole(ctx, roleID)                  // fails with ErrRoleInUse if anyone holds it
+err := w.DeleteRole(ctx, roleID, wardn.Cascade()) // also revokes it from everyone
+```
+
+<Aside type="caution">`Roles`, `CustomRole`, `Members` and `PermissionsOf` are reads, like `Can`: they don't check who is asking. Protect the routes that expose them with `Require`, for example `Require("wardn:roles.assign")`.</Aside>
+
+## Rules every custom role follows
+
+- **It belongs to a scope.** It is visible and assignable only in that scope and below. Another tenant never sees it.
+- **It only grants.** A `RoleSpec` with `Deny` is rejected.
+- **It uses catalog permissions.** Unknown names are rejected with a suggestion.
+- **Its name can't impersonate another role.** Names compare ignoring case, spacing, punctuation and look-alike characters, so "0rg Admin" is refused when `org_admin` exists. Mixed scripts (a Cyrillic "а" in "Аdmin"), invisible characters and full-width letters are refused outright.
+- **It's identified by an ID** (`cr-…`) that never clashes with a system role name. Names are only for display.
+- **There are at most 500 per scope**, so one tenant can't degrade the service for others.
+
+## Turning errors into responses
+
+`wardn.HTTPStatus(err)` maps every management error to a status, ready for your admin API:
+
+| Error | Status |
+|---|---|
+| `ErrEscalation`, `ErrDenied` | `403` |
+| `ErrRoleNotFound` (also what an admin without `wardn:roles.manage` sees, so role IDs can't be probed) | `404` |
+| `ErrConflict`, `ErrRoleNameTaken`, `ErrRoleInUse` | `409` |
+| `ErrInvalidInput`, `ErrNotAssignable` | `400` |

@@ -1,0 +1,54 @@
+---
+title: Configuration
+description: Every field of wardn.Config, with its default.
+---
+
+Every field is optional.
+
+```go
+w, err := wardn.New(wardn.Config{ /* ... */ })
+w := wardn.MustNew(wardn.Config{ /* ... */ }) // panics on error; for main()
+```
+
+| Field | Type | Default | Purpose |
+|---|---|---|---|
+| `File` | `string` | `"wardn.yaml"` | Path of the policy file. |
+| `Policy` | `*Policy` | — | A policy defined in Go, used instead of `File`. |
+| `Store` | `Store` | in-memory | Where assignments, custom roles and links live. See [Choosing a store](/guides/stores/). |
+| `ManualMigrations` | `bool` | `false` | Don't migrate the store at startup; your pipeline does it. |
+| `ParentOf` | `func(ctx, Scope) (Scope, bool, error)` | stored links | Resolve scope parents from your own data. |
+| `UserFrom` | `func(*http.Request) (string, bool)` | the context | Where middleware finds the signed-in user. |
+| `OnError` | `func(http.ResponseWriter, *http.Request, error)` | generic JSON | How middleware writes `401`/`403`/`400`/`500` responses. |
+| `OnDecision` | `func(ctx, Decision, error)` | — | Called with every decision. |
+| `OnChange` | `func(ctx, Event) error` | — | Called before every change; an error stops the change. |
+| `Clock` | `Clock` | system clock | The time source for time-limited access. |
+| `Cache` | `Cache` | none | A cross-request cache. See [Caching](/guides/caching/). |
+| `CacheSecret` | `[]byte` | random, for the memory cache only | Signs cache entries. Required (32+ bytes) for a shared cache. |
+| `CacheTTL` | `time.Duration` | 5s (max 5m) | Lifetime of cache entries. |
+
+## Startup checks
+
+`New` returns an error (and `MustNew` panics) if:
+
+- the policy is invalid
+- both `File` and `Policy` are set
+- the store's migration fails, or the database was upgraded by a newer wardn
+- a shared cache has no `CacheSecret`, or the secret is under 32 bytes
+- `CacheTTL` is negative or over five minutes
+
+A misconfigured application never starts.
+
+## Limits
+
+| Limit | Value |
+|---|---|
+| User and scope IDs | 256 bytes; no control or invisible characters, no leading or trailing whitespace |
+| Scope type and system role names | 64 characters |
+| Permission names | 128 characters |
+| Descriptions | 512 bytes |
+| Policy file | 1 MiB |
+| Custom role names | 64 characters |
+| Permissions in one custom role | 256 |
+| Custom roles per scope | 500 |
+| `Members` page size | 500 |
+| Assignment times | years 1–9999 |

@@ -1,0 +1,69 @@
+---
+title: The escalation guard
+description: Why nobody can grant more power than they hold, and exactly how wardn enforces it.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The most common serious bug in home-grown role systems is this: anyone who can manage roles can make themselves an administrator. wardn prevents it by default, and it can't be turned off for calls made on behalf of a user.
+
+## The rule
+
+> Nobody can create, edit, delete, assign or revoke a role that contains a permission they don't hold themselves, at the scope where they're acting.
+
+In detail:
+
+| Action | The actor needs |
+|---|---|
+| **Create a role** | `wardn:roles.manage` at the owner scope, and every permission in the role |
+| **Edit or delete a role** | `wardn:roles.manage` at the owner scope, and every permission in the role *before and after* the change |
+| **Assign a role** | `wardn:roles.assign` at the scope, and every permission the role **grants and denies** |
+| **Revoke a role** | the same as assigning it |
+
+## Why denies count
+
+A role that denies is a restriction. Assigning `suspended` (which denies everything) takes power away; revoking it gives power back. Both are as powerful as granting what the role denies.
+
+So only someone who holds everything a role denies can assign or revoke it. A branch manager can't suspend their organisation's admin, and can't lift a suspension to restore permissions they never had.
+
+## Why wildcards are strict
+
+Holding a wildcard means holding **all** of it:
+
+- An admin who holds `loan:create`, `loan:view` and `loan:approve` one by one **can't** create a `loan:*` role. That role would also grant every `loan:` permission added in the future, which the admin doesn't hold.
+- An admin with `*` but a deny on `loan:approve` **can't** grant `*` or `loan:*`, only wildcards clear of the deny, such as `customer:*`.
+
+## Who can do what: an example
+
+| Actor | Holds | Can assign `teller` at a branch? | Can create a role with `report:export`? | Can suspend the org admin? |
+|---|---|---|---|---|
+| Org admin | `*` at the organisation | ✓ | ✓ | ✓ |
+| Branch manager | `customer:view`, `customer:edit`, `loan:*`, `wardn:roles.assign`, `wardn:roles.manage` at one branch | ✓ (in their branch) | ✗ (doesn't hold it) | ✗ (doesn't hold `*`) |
+| Teller | `customer:view`, `loan:create` | ✗ (no `wardn:roles.assign`) | ✗ | ✗ |
+
+## Nothing leaks to the curious
+
+The management permission is checked **first**, before wardn looks anything up. Someone without it learns nothing: not whether a role exists, not its version, not its name. Editing or deleting a role you can't manage answers exactly as if the role didn't exist.
+
+## Showing only what an admin can grant
+
+`w.AssignableRoles(ctx, scope)` applies the same rule, so your "assign role" picker only offers roles this admin may hand out. The guard still checks every `Assign`.
+
+## Jobs and setup scripts
+
+Code with no signed-in user (seeding the first administrator, migrations, background jobs) uses the unguarded handle:
+
+```go
+w.System().Assign(ctx, "user-001", "super_admin", wardn.Global)
+```
+
+`System()` stands out in code review on purpose. Its changes are still audited, with `Event.System` set.
+
+<Aside>The guard is evaluated at the scope where the change happens. An admin who is denied a permission at one branch can still grant it at the organisation level, from where it reaches that branch. Put restrictive denies on the roles of the people being restricted, not on the people who manage them.</Aside>
+
+## How it's proven
+
+- A property test attacks the guard in 300 random worlds. Every assignment it allows is checked by an independent reference implementation, which must confirm the actor already held everything granted.
+- An internal security review found that the guard originally ignored denies. That was fixed, and regression tests and mutation tests now hold it in place.
+
+See [How wardn is tested](/security/testing/).

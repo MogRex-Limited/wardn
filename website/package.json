@@ -1,0 +1,18 @@
+{
+  "name": "wardn-website",
+  "private": true,
+  "type": "module",
+  "description": "The wardn landing page and documentation (Astro Starlight).",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "0.42.10",
+    "astro": "7.4.7",
+    "sharp": "0.35.5",
+    "starlight-links-validator": "0.27.0"
+  }
+}

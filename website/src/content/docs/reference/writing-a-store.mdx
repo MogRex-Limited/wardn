@@ -1,0 +1,51 @@
+---
+title: Writing a store
+description: Back wardn with another database, and prove the adapter correct with the conformance suite.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+wardn ships stores for SQL databases and MongoDB. For anything else (DynamoDB, Spanner, an internal service), implement `wardn.Store`. The interface is small because stores only save and load records; all the authorization logic, including security, stays in wardn.
+
+## The interface
+
+```go
+type Store interface {
+	AssignmentStore // Assign, Revoke, Assignments, Members, RoleInUse, RevokeRole,
+	                // ExpiredUnreported, MarkExpiryReported, RevokeExpired
+	RoleStore       // CreateRole, UpdateRole, DeleteRole, Roles, RolesOwnedBy
+	ScopeStore      // Link, Parent
+}
+
+// Optional: stores with a schema. wardn.New calls Migrate.
+type Migrator interface {
+	Migrate(ctx context.Context) error
+}
+```
+
+The method documentation (`go doc github.com/MogRex-Limited/wardn Store`) states each contract precisely.
+
+## The rules that matter most
+
+- **Compare IDs exactly**, byte for byte. Never case-insensitively, never normalised, never trimmed.
+- **Return only what was asked for.** `Assignments` must never return another user's or another scope's rows. (wardn re-checks anyway, but your store must be correct.)
+- **Make two things atomic:** creating a role whose `(Owner, NameKey)` is taken must fail with `ErrRoleNameTaken`, and `UpdateRole` must succeed only if the stored version equals the expected one (`ErrConflict` otherwise). A unique index and a conditional update do both.
+- **Never widen a time window.** If you round times, round starts later and ends earlier.
+- **Honour context cancellation**, and fail completely or not at all.
+- **`RevokeExpired` and `MarkExpiryReported` must ignore an assignment whose window changed**, for example because it was assigned again.
+
+## Prove it
+
+```go
+import "github.com/MogRex-Limited/wardn/storetest"
+
+func TestMyStore(t *testing.T) {
+	storetest.Run(t, func(t *testing.T) wardn.Store {
+		return mystore.New(freshDatabase(t)) // a new, empty store per test
+	})
+}
+```
+
+The suite runs the same 25 checks the official stores pass on every change. Among them: exact identity across case, Unicode forms and widths; IDs containing SQL injection text; atomic name uniqueness and versioned updates under 8 concurrent writers; time round-trips; cancellation; and an end-to-end scenario through a real Warden.
+
+<Aside>A shared cache works the same way: implement `wardn.Cache` and run `cachetest.Run`.</Aside>

@@ -1,0 +1,89 @@
+---
+title: Go API
+description: The public API at a glance, grouped by task.
+---
+
+The full reference is generated from the code with `go doc github.com/MogRex-Limited/wardn`. This page groups the API by task.
+
+## Setup
+
+| | |
+|---|---|
+| `wardn.New(Config) (*Warden, error)` / `MustNew` | Validate the policy and start. |
+| `wardn.LoadPolicyFile(path)` / `ParsePolicy(data, name)` | Read a policy without starting. |
+| `(*Policy).Validate() error` | Check a policy and report every problem. |
+
+## Checking access
+
+| | |
+|---|---|
+| `w.Can(ctx, user, permission, scope) bool` | Yes or no; `false` on any error. |
+| `w.Check(ctx, user, permission, scope) (Decision, error)` | The decision and its reason. |
+| `w.CanAny(ctx, user, scope, permissions...)` / `CanAll` | One of, or all of, several permissions. |
+| `w.PermissionsOf(ctx, user, scope) ([]string, error)` | Everything the user may do here. |
+| `w.RolesOf(ctx, user, scope) ([]Assignment, error)` | The assignments in effect here, inherited ones included. |
+| `w.WithMemo(ctx) context.Context` | Share store reads within one unit of work. |
+
+## HTTP
+
+| | |
+|---|---|
+| `w.Require(permissions...)` | Middleware: all permissions needed. |
+| `w.RequireAny(permissions...)` | Middleware: one permission needed. |
+| `w.ScopeFrom(scopeType, idFunc)` | Middleware: set the request's scope. |
+| `wardn.PathValue(name)` | Read a path parameter (net/http, chi). |
+| `wardn.WithUser(ctx, id)` / `UserOf(ctx)` | Put or read the signed-in user. |
+| `wardn.WithScope(ctx, s)` / `ScopeOf(ctx)` | Put or read the request's scope. |
+| `wardn.HTTPStatus(err) int` | The status code for any wardn error. |
+
+## Scopes
+
+| | |
+|---|---|
+| `wardn.NewScope(scopeType, id)` / `wardn.Global` | Build a scope. |
+| `w.Link(ctx, child, parent)` | Record a parent (backend only). |
+
+## Managing access (as the user in `ctx`, guarded)
+
+| | |
+|---|---|
+| `w.Assign(ctx, user, role, scope, opts...)` | Give a role; `wardn.From(t)`, `wardn.Until(t)` limit it in time. |
+| `w.Revoke(ctx, user, role, scope)` | Take a role away. |
+| `w.CreateRole(ctx, owner, RoleSpec) (CustomRole, error)` | Create a custom role. |
+| `w.UpdateRole(ctx, id, RoleSpec, version)` | Edit one, with conflict detection. |
+| `w.DeleteRole(ctx, id, wardn.Cascade())` | Delete one; `Cascade` also revokes it. |
+| `w.System()` | The same methods, unguarded, for jobs and setup. |
+
+## Admin screens
+
+| | |
+|---|---|
+| `w.Catalog() []Permission` | Every permission with its description. |
+| `w.SystemRoles() []string` | The policy's role names. |
+| `w.Roles(ctx, scope) ([]RoleInfo, error)` | Roles assignable at a scope. |
+| `w.AssignableRoles(ctx, scope)` | Those the user in `ctx` may grant. |
+| `w.CustomRole(ctx, id) (CustomRole, error)` | One custom role, for an edit form. |
+| `w.Members(ctx, scope, cursor, limit)` | Who holds which role at a scope, paginated. |
+
+## Expiry and cache
+
+| | |
+|---|---|
+| `w.SweepExpired(ctx, wardn.RemoveExpired())` | Report (and optionally remove) expired assignments. |
+| `w.RunExpiry(ctx, interval, onError)` | Sweep on a timer. |
+| `w.InvalidateCache(ctx, scopes...)` | After changes made behind wardn's back. |
+| `wardn.NewMemoryCache()` / `wardn.NewMemoryStore()` | In-process cache and store. |
+
+## Key types
+
+| Type | Holds |
+|---|---|
+| `Scope` | `Type`, `ID` |
+| `Decision` | `Allowed`, `User`, `Permission`, `Scope`, `Role`, `At`, `Rule`, `Reason` |
+| `Assignment` | `User`, `Role`, `Scope`, `StartsAt`, `ExpiresAt` |
+| `CustomRole` | `ID`, `Owner`, `Name`, `Description`, `Allow`, `AssignableAt`, `Version`, times |
+| `RoleSpec` | `Name`, `Description`, `Allow`, `AssignableAt` |
+| `RoleInfo` | A role for display: system or custom, owner, grants, denies |
+| `Event` | An audited change: `Type`, `Actor`, `System`, `At`, target, `Before`, `After`, `Err` |
+
+All public types encode to JSON with stable `snake_case` field names, ready for admin APIs.

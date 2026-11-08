@@ -1,0 +1,88 @@
+---
+title: Testing
+description: Test your authorization without a database, and prove no route was left unprotected.
+---
+
+`wardntest` runs your **real** policy in memory, so tests catch typos in permission names exactly as production would.
+
+## A Warden for tests
+
+```go
+import "github.com/MogRex-Limited/wardn/wardntest"
+
+w := wardntest.New(t, "../wardn.yaml") // fails the test if the policy is invalid
+```
+
+Options: `wardntest.WithClock(clock)` for time travel and `wardntest.WithStore(store)` for a store you've prepared.
+
+## Requests from a user with roles
+
+```go
+req := httptest.NewRequest("GET", "/reports", nil)
+req = wardntest.AsRole(t, w, req, "auditor") // a fresh user holding auditor globally
+
+lagos := wardn.NewScope("branch", "lagos")
+req = wardntest.AsRoleIn(t, w, req, lagos, "teller") // roles held at a scope
+```
+
+For code that isn't HTTP, get a user ID instead:
+
+```go
+userID := wardntest.NewUser(t, w, lagos, "teller")
+```
+
+## When authorization isn't the point
+
+```go
+w := wardntest.AllowAll(t, "../wardn.yaml") // everyone may do everything
+```
+
+Permission names are still checked against your policy, so a typo still fails.
+
+## Time travel
+
+```go
+clock := wardntest.NewClock(start)
+w := wardntest.New(t, "../wardn.yaml", wardntest.WithClock(clock))
+clock.Advance(24 * time.Hour)
+```
+
+## Find unprotected routes
+
+A route someone forgot to protect is the most common real-world authorization bug. `AuditRoutes` requests every route as a signed-in user who holds **no roles**, and fails for any route that doesn't answer `403`:
+
+```go
+func TestEveryRouteIsProtected(t *testing.T) {
+	w := wardntest.New(t, "../wardn.yaml")
+	router := newRouter(w)
+
+	var routes []wardntest.Route
+	param := regexp.MustCompile(`\{[^}]+\}`)
+	chi.Walk(router, func(method, pattern string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		routes = append(routes, wardntest.Route{Method: method, Path: param.ReplaceAllString(pattern, "x")})
+		return nil
+	})
+
+	wardntest.AuditRoutes(t, router, authenticateAs, routes,
+		wardntest.Route{Method: "GET", Path: "/me"}, // open to every signed-in user, on purpose
+	)
+}
+
+// authenticateAs makes a request look signed in to your real auth middleware.
+func authenticateAs(r *http.Request, userID string) *http.Request {
+	r.Header.Set("Authorization", "Bearer "+testToken(userID))
+	return r
+}
+```
+
+A failure reads:
+
+```text
+wardntest: DELETE /orgs/x/branches/x/loans/x answered 204 to a user with no roles; protect it with Require, or list it as public
+```
+
+If your authentication rejects the audit user, `AuditRoutes` reports that too. A misconfigured audit can't pass by accident.
+
+## Testing a custom store
+
+If you write your own store, run the conformance suite against it. See [Writing a store](/reference/writing-a-store/).

@@ -31,7 +31,7 @@ DB_ENV := WARDN_TEST_POSTGRES_DSN='postgres://postgres:wardn@127.0.0.1:56432/war
           WARDN_TEST_MONGO_URI='mongodb://127.0.0.1:56017' \
           WARDN_TEST_REDIS_ADDR='127.0.0.1:56379'
 
-.PHONY: check test test-modules integration db-up db-down lint fmt vuln deps tidy cover hooks mutation fuzz
+.PHONY: check test test-modules integration db-up db-down lint fmt vuln deps tidy cover hooks mutation fuzz docs docs-build
 
 ## hooks: install the pre-push hook that runs `make check` (once per clone)
 hooks:
@@ -91,3 +91,11 @@ mutation:
 ## fuzz: run every fuzz target (FUZZTIME each, default 60s)
 fuzz:
 	./scripts/fuzz.sh $(or $(FUZZTIME),60s)
+
+## docs: run the documentation site locally at http://localhost:4321
+docs:
+	cd website && npm ci --no-audit --no-fund && npm run dev
+
+## docs-build: build the documentation site, failing on any broken link
+docs-build:
+	cd website && npm ci --no-audit --no-fund && npm run build

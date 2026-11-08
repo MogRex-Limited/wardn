@@ -1,0 +1,104 @@
+---
+title: Multi-tenancy
+description: Isolate tenants, link their scopes, and keep roles flowing down the right tree.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+In wardn, tenants are simply the top level of your scope tree. Isolation is not a feature you switch on: a role assigned in one tenant has no path to another.
+
+<Steps>
+
+1. **Declare the tree**
+
+   ```yaml title="wardn.yaml"
+   scopes:
+     organisation: {}
+     branch: { parent: organisation }
+   ```
+
+2. **Link scopes when you create them**
+
+   ```go
+   func (s *Service) CreateBranch(ctx context.Context, orgID, branchID string) error {
+   	if err := s.db.InsertBranch(ctx, orgID, branchID); err != nil {
+   		return err
+   	}
+   	return s.wardn.Link(ctx,
+   		wardn.NewScope("branch", branchID),
+   		wardn.NewScope("organisation", orgID))
+   }
+   ```
+
+   Moving a branch is the same call with a new parent. Inheritance follows at once.
+
+3. **Assign at the right level**
+
+   ```go
+   w.Assign(ctx, "ada", "org_admin", wardn.NewScope("organisation", "acme")) // all of Acme
+   w.Assign(ctx, "bayo", "teller", wardn.NewScope("branch", "lagos"))        // one branch
+   ```
+
+4. **Scope every request**
+
+   ```go
+   r.Route("/orgs/{orgID}", func(r chi.Router) {
+   	r.Use(w.ScopeFrom("organisation", wardn.PathValue("orgID")))
+   	// ...
+   	r.Route("/branches/{branchID}", func(r chi.Router) {
+   		r.Use(w.ScopeFrom("branch", wardn.PathValue("branchID")))
+   		// ...
+   	})
+   })
+   ```
+
+</Steps>
+
+## Already have the hierarchy in your database?
+
+Instead of calling `Link`, let wardn ask your data, so nothing is stored twice:
+
+```go
+wardn.Config{
+	ParentOf: func(ctx context.Context, s wardn.Scope) (wardn.Scope, bool, error) {
+		switch s.Type {
+		case "branch":
+			org, err := repo.OrganisationOfBranch(ctx, s.ID)
+			if errors.Is(err, sql.ErrNoRows) {
+				return wardn.Scope{}, false, nil
+			}
+			return wardn.NewScope("organisation", org), err == nil, err
+		}
+		return wardn.Scope{}, false, nil
+	},
+}
+```
+
+`ParentOf` must return the true parent from authoritative data. If it returns an error, the check denies.
+
+<Aside type="caution">With `ParentOf` and a [shared cache](/guides/caching/), wardn can't see moves made in your data. After moving an entity, call `w.InvalidateCache(ctx, scope)`.</Aside>
+
+## The confused-deputy trap
+
+A URL says which tenant a request *claims* to act in. A record says which tenant it *belongs* to. They aren't always the same:
+
+```go
+// POST /orgs/acme/loans/987/approve, but loan 987 belongs to globex.
+func (h *Handlers) approveLoan(rw http.ResponseWriter, r *http.Request) {
+	loan := h.loans.Get(r.Context(), r.PathValue("id"))
+	userID, _ := wardn.UserOf(r.Context())
+	if !h.wardn.Can(r.Context(), userID, "loan:approve", loan.Scope()) { // the record's own scope
+		http.Error(rw, "forbidden", http.StatusForbidden)
+		return
+	}
+	// ...
+}
+```
+
+Whenever a handler acts on a specific record, check against the record's own scope, or load records only through queries filtered by the scope from the URL.
+
+## What wardn guarantees
+
+- An assignment applies only in its scope and below. wardn re-checks every row the store returns, so even a faulty store can't leak another tenant's roles.
+- Custom roles are visible and assignable only inside the tenant that owns them.
+- A scope that was never linked inherits nothing except global roles.

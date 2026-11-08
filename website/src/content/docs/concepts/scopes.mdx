@@ -1,0 +1,93 @@
+---
+title: Scopes and hierarchy
+description: Model your product's tenancy as a tree of scopes; roles flow down it.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+A **scope** is *where* a role applies. A scope has a **type** and an **ID**: `organisation:acme`, `branch:lagos`, `workspace:w42`.
+
+## Your tree, your types
+
+wardn has no built-in hierarchy. Each product declares its own scope types and how they nest:
+
+<Tabs>
+<TabItem label="Bank">
+```yaml
+scopes:
+  organisation: {}
+  region: { parent: organisation }
+  branch: { parent: region }
+```
+</TabItem>
+<TabItem label="SaaS">
+```yaml
+scopes:
+  workspace: {}
+  project: { parent: workspace }
+```
+</TabItem>
+<TabItem label="School">
+```yaml
+scopes:
+  school: {}
+  class: { parent: school }
+```
+</TabItem>
+<TabItem label="No tenancy">
+```yaml
+# No scopes at all: every role is assigned at global.
+```
+</TabItem>
+</Tabs>
+
+Above every tree sits one implicit scope: **global**. A role assigned at global applies everywhere.
+
+## Roles flow down
+
+A role assigned at a scope applies in that scope and in **every scope beneath it**, never above it and never sideways:
+
+```text
+global                                   root  → super_admin  (applies everywhere)
+ ├── organisation:acme                   ada   → org_admin    (acme and all below)
+ │    └── region:south                   seun  → auditor      (south and its branches)
+ │         ├── branch:lagos              bayo  → teller       (lagos only)
+ │         └── branch:ibadan
+ └── organisation:globex                 (ada has nothing here)
+```
+
+## Telling wardn which branch belongs where
+
+The policy says a branch's parent is a region. wardn must also learn that branch `lagos` sits in region `south`. There are two ways.
+
+**Store the links (default).** Call `Link` when your application creates or moves an entity:
+
+```go
+err := w.Link(ctx, wardn.NewScope("branch", "lagos"), wardn.NewScope("region", "south"))
+```
+
+**Or resolve parents from your own data**, so nothing is stored twice:
+
+```go
+wardn.Config{
+	ParentOf: func(ctx context.Context, s wardn.Scope) (wardn.Scope, bool, error) {
+		if s.Type == "branch" {
+			region, err := branches.RegionOf(ctx, s.ID)
+			return wardn.NewScope("region", region), err == nil, err
+		}
+		// ... other types
+		return wardn.Scope{}, false, nil
+	},
+}
+```
+
+Either way, wardn checks that the parent has the type the policy declares.
+
+<Aside type="caution">`Link` is backend plumbing. Never expose it directly to end users: whoever controls links controls inheritance.</Aside>
+
+## Safety rules
+
+- **A scope whose parent is unknown inherits only from global.** If a branch was never linked, an organisation admin has no power there. This fails safe.
+- **IDs are compared exactly.** `o1` and `O1` are different scopes; wardn never normalises IDs. IDs may be up to 256 bytes and may not contain control or invisible characters, or start or end with whitespace.
+- **Lookups are bounded** by the depth of your scope tree, so corrupt data can never cause an endless loop.
+- **A check with no scope happens at global**, where only global assignments apply. That is always the most restrictive answer, never the most permissive.

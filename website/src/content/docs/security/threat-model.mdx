@@ -1,0 +1,38 @@
+---
+title: Threat model
+description: Who might attack an application through wardn, and how each threat is stopped.
+---
+
+This is a summary. The authoritative threat model, with every threat, its mitigation and the test that proves it, is [`docs/THREAT_MODEL.md`](https://github.com/MogRex-Limited/wardn/blob/main/docs/THREAT_MODEL.md) in the repository.
+
+**The rule:** every threat has a test named after it (`TestThreat_T01_…`). A threat without a test counts as unmitigated.
+
+## Who might attack
+
+| Actor | Has | Wants |
+|---|---|---|
+| Anonymous outsider | Network access | Any access at all |
+| Low-privilege user | A valid account | Permissions they weren't given |
+| Malicious tenant admin | Admin rights in one tenant | Another tenant, or more power in their own |
+| Former or temporary user | An assignment that was revoked or expired | Continued access |
+| Malicious contributor | The ability to propose changes | A backdoor in wardn |
+| Supply-chain attacker | Control of a dependency or release path | Malicious code inside wardn |
+| Well-meaning developer | The policy and the routes | Gets something wrong by accident |
+
+## Main threats and mitigations
+
+| Threat | Mitigation |
+|---|---|
+| One tenant acting in another | Assignments apply only in their scope's subtree; every store row is re-checked |
+| Granting yourself more power | The escalation guard, which counts denies and wildcards |
+| Locking out a superior | Revoking and restricting are guarded like granting |
+| A failure that grants access | Every error path denies; tested with fault injection at every call |
+| Revoked or expired access lingering | Checked on every request; the cache stores data, not decisions |
+| Look-alike IDs, permissions or role names | Exact byte comparison; strict name rules; look-alike folding for role names |
+| SQL or NoSQL injection | Parameters only; typed Mongo values; validated table prefixes |
+| Forged cache entries | Entries signed with HMAC-SHA256 |
+| Typos | Startup validation, panics at route registration, generated constants |
+| Forgotten route protection | `wardntest.AuditRoutes` |
+| Information leaks | Generic error bodies; role existence hidden from non-managers |
+| Unrecorded changes | `OnChange` runs before every change and can veto it |
+| Malicious dependency or release | Dependency allowlist, pinned CI, signed releases with provenance |

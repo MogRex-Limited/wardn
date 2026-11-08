@@ -1,0 +1,114 @@
+---
+title: Multi-branch bank
+description: Organisations, regions and branches, with tellers, managers, auditors, suspensions and temporary approvers.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+A lending platform serves several banks. Each bank (an *organisation*) has regions, and each region has branches. Staff work at one branch, managers run a branch, auditors cover a region, and head office administers the whole bank.
+
+## The policy
+
+```yaml title="wardn.yaml"
+scopes:
+  organisation: {}
+  region: { parent: organisation }
+  branch: { parent: region }
+
+permissions:
+  customer:view:  View customer profiles
+  customer:edit:  Edit customer details
+  loan:view:      View loans
+  loan:create:    Create loan applications
+  loan:approve:   Approve loans
+  report:export:  Export reports
+
+roles:
+  platform_admin:
+    description: Operates the platform for every bank
+    assignable_at: [global]
+    allow: ["*"]
+
+  org_admin:
+    description: Head office; administers one bank
+    assignable_at: [organisation]
+    allow: ["*"]
+
+  branch_manager:
+    description: Runs one branch, including its staff and roles
+    assignable_at: [branch]
+    allow: [customer:view, customer:edit, "loan:*", wardn:roles.assign, wardn:roles.manage]
+
+  teller:
+    description: Front desk
+    assignable_at: [branch]
+    allow: [customer:view, loan:view, loan:create]
+
+  regional_auditor:
+    description: Read-only, for a whole region
+    assignable_at: [region]
+    allow: [customer:view, loan:view, report:export]
+
+  suspended:
+    description: Blocks everything where it is assigned
+    deny: ["*"]
+```
+
+## Who can do what
+
+| Person | Assignment | Can | Cannot |
+|---|---|---|---|
+| Ada | `org_admin` at `organisation:acme` | everything in Acme | anything in another bank |
+| Bisi | `branch_manager` at `branch:lagos` | run Lagos, assign tellers there | export reports; act in other branches |
+| Bayo | `teller` at `branch:lagos` | create loans in Lagos | approve loans |
+| Seun | `regional_auditor` at `region:south` | view and export across South | change anything |
+
+## Wiring it up
+
+```go
+// When the bank onboards a branch:
+w.Link(ctx, wardn.NewScope("region", "south"), wardn.NewScope("organisation", "acme"))
+w.Link(ctx, wardn.NewScope("branch", "lagos"), wardn.NewScope("region", "south"))
+
+// Routes:
+r.Route("/branches/{branchID}", func(r chi.Router) {
+	r.Use(w.ScopeFrom("branch", wardn.PathValue("branchID")))
+	r.With(w.Require("loan:create")).Post("/loans", createLoan)
+	r.With(w.Require("loan:approve")).Post("/loans/{id}/approve", approveLoan)
+	r.With(w.Require("wardn:roles.assign")).Post("/staff/{userID}/roles", assignRole)
+})
+```
+
+## Temporary approver while the manager is on leave
+
+Bisi asks for a colleague to approve loans for one week. A `loan_approver` custom role, created once by head office, does it:
+
+```go
+// Head office, once:
+approver, _ := w.CreateRole(asAda, acme, wardn.RoleSpec{
+	Name: "Loan Approver", Allow: []string{"loan:view", "loan:approve"}, AssignableAt: []string{"branch"},
+})
+
+// Bisi, for the week (she holds loan:*, so the guard allows it):
+w.Assign(asBisi, "tolu", approver.ID, lagos, wardn.From(monday), wardn.Until(nextMonday))
+```
+
+Access starts Monday and ends the following Monday at the same minute, with no cleanup job. The expiry sweeper records the end in the audit trail.
+
+## Suspending someone
+
+When an investigation starts, head office suspends a teller at their branch:
+
+```go
+w.Assign(asAda, "bayo", "suspended", lagos)
+```
+
+`suspended` denies everything, and deny always wins. Bayo's teller role is untouched, so lifting the suspension restores exactly what he had.
+
+<Aside>Only someone who holds everything a role denies can assign or revoke it. For `suspended`, that means someone holding `*`. Bisi, the branch manager, can't suspend Ada or lift a suspension; head office can.</Aside>
+
+## What the bank gets for free
+
+- **Isolation between banks.** Nothing assigned in Acme reaches Globex.
+- **Safe delegation.** Branch managers hand out roles without being able to create anything stronger than their own.
+- **Audit.** Every assignment, revocation, role edit, link and expiry goes through `OnChange` before it happens.

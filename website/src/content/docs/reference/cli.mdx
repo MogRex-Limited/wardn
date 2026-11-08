@@ -1,0 +1,52 @@
+---
+title: CLI
+description: wardn check, wardn gen and wardn version.
+---
+
+```bash
+go install github.com/MogRex-Limited/wardn/cmd/wardn@latest
+```
+
+## `wardn check`
+
+Validates a policy file. Use it in CI.
+
+```bash
+wardn check [-f wardn.yaml]
+```
+
+```text
+wardn.yaml is valid.
+  scopes:      organisation › region › branch
+  permissions: 6, plus 2 built in
+  roles:       branch_manager, org_admin, suspended, teller
+```
+
+An invalid file prints every problem with its line, and exits with status 1.
+
+## `wardn gen`
+
+Writes Go constants for permissions, roles and scope types. See [Typo-proof names](/guides/code-generation/).
+
+```bash
+wardn gen [-f wardn.yaml] [-o perm/perm.go] [-pkg perm] [-check]
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `-f` | `wardn.yaml` | Policy file |
+| `-o` | `perm/perm.go` | Output file |
+| `-pkg` | the output directory's name | Package name |
+| `-check` | off | Don't write; exit 1 if the output is missing or stale |
+
+## `wardn version`
+
+Prints the version.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Success |
+| `1` | Invalid policy, stale output, or a write error |
+| `2` | Wrong usage |

@@ -1,0 +1,96 @@
+---
+title: Policy file
+description: The complete wardn.yaml format and the rules it is validated against.
+---
+
+The policy file describes a product's scopes, permissions and system roles. wardn reads `wardn.yaml` by default.
+
+## Full example
+
+```yaml title="wardn.yaml"
+version: 1                          # optional; the only version is 1
+
+scopes:                             # optional; omit for global-only products
+  organisation: {}
+  region: { parent: organisation }
+  branch: { parent: region }
+
+permissions:                        # the catalog: permission → description
+  customer:view: View customer profiles
+  loan:create:   Create loan applications
+  loan:approve:  Approve loans
+
+roles:
+  org_admin:                        # full form
+    description: Administers one organisation
+    assignable_at: [organisation]
+    allow: ["*"]
+
+  ops_admin:
+    allow: ["*"]
+    deny: [loan:approve]            # everything except approving loans
+
+  teller: [customer:view, loan:create]   # short form: a list is an allow list
+```
+
+## `scopes`
+
+| Field | Meaning |
+|---|---|
+| *key* | The scope type's name: lowercase letters, digits and `_`, starting with a letter, at most 64 characters. `global` is reserved. |
+| `parent` | The type this one sits inside. Omit it for a top-level type. |
+
+Types must form a tree: no cycles, and every parent must be declared.
+
+## `permissions`
+
+Each key is a permission (`resource:action`, see [Permissions](/concepts/permissions/)) and each value is its description (required, at most 512 bytes). Wildcards and the `wardn:` prefix are not allowed here.
+
+## `roles`
+
+| Field | Meaning |
+|---|---|
+| *key* | The role's name: lowercase letters, digits and `_`. |
+| `description` | Optional, shown in admin screens. |
+| `allow` | Permissions or wildcards (`*`, `loan:*`) the role grants. |
+| `deny` | Permissions or wildcards the role takes away. Deny beats allow from any role. |
+| `assignable_at` | Scope types (or `global`) where the role may be assigned. Omitted: anywhere. |
+
+A role needs at least one `allow` or `deny` entry.
+
+## Validation
+
+wardn validates the whole file when it starts and **reports every problem at once**, each with the file, the line and a suggestion where one exists:
+
+```text
+wardn: wardn.yaml has 2 problems:
+  wardn.yaml:3: permissions.loan:approve: add a description; admin screens show it to people choosing permissions
+  wardn.yaml:5: roles.teller.allow[0]: permission "loan:veiw" is not in permissions; did you mean "loan:view"?
+```
+
+It rejects:
+
+- unknown keys, duplicate keys and invalid names
+- permissions without descriptions
+- roles that reference undefined permissions or scope types
+- wildcards that match nothing
+- a permission both allowed and denied by one role
+- cycles in the scope tree
+- YAML anchors, aliases and merge keys (they make files hard to review)
+- files over 1 MiB, and more than one YAML document
+
+Run `wardn check` in CI to catch problems before deployment.
+
+## Defining the policy in Go
+
+Teams that prefer code can build the same structure:
+
+```go
+w, err := wardn.New(wardn.Config{Policy: &wardn.Policy{
+	Scopes:      map[string]wardn.ScopeType{"workspace": {}},
+	Permissions: map[string]string{"doc:read": "Read documents"},
+	Roles:       map[string]wardn.Role{"reader": {Allow: []string{"doc:read"}}},
+}})
+```
+
+wardn takes a private copy at `New`; later changes to the `Policy` value have no effect.

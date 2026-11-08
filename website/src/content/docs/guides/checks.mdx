@@ -1,0 +1,67 @@
+---
+title: Check access in code
+description: Can, Check, CanAny and CanAll, showing and hiding actions, and per-request memoisation.
+---
+
+Middleware covers routes. Inside handlers, services and background jobs, check directly.
+
+## Yes or no
+
+```go
+if !w.Can(ctx, userID, "loan:approve", loan.Branch()) {
+	return ErrForbidden
+}
+```
+
+`Can` returns `false` on any error, including an undefined permission. Use `Check` when you need to know why.
+
+## With the reason
+
+```go
+d, err := w.Check(ctx, userID, "loan:approve", branch)
+if err != nil {
+	return err // undefined permission, invalid scope, database error…
+}
+if !d.Allowed {
+	log.Info("denied", "reason", d.Reason) // e.g. denied by role "ops_admin" at organisation:acme (rule "loan:approve")
+}
+```
+
+A `Decision` carries `Allowed`, `Role`, `At` (the scope where that role is assigned), `Rule` (the pattern that matched) and `Reason`. On error it always denies.
+
+## Several permissions at once
+
+```go
+w.CanAny(ctx, userID, branch, "loan:view", "loan:approve") // at least one
+w.CanAll(ctx, userID, branch, "loan:create", "loan:view")  // every one
+```
+
+An undefined permission anywhere in the list makes both return `false`. `CanAll` with an empty list returns `false`.
+
+## Show and hide actions in the UI
+
+Send the frontend everything the user may do at a scope, and let it hide the buttons:
+
+```go
+perms, err := w.PermissionsOf(ctx, userID, branch)
+// ["customer:view", "loan:create", "loan:view"]
+```
+
+Wildcards are expanded and denies applied. Hiding a button is a convenience, not security: the route must still `Require` the permission.
+
+`RolesOf(ctx, userID, scope)` returns the assignments in effect at a scope, including inherited ones, with their time windows. It suits "your access" pages.
+
+## Many checks in one request
+
+Inside routes protected by wardn's middleware, store reads are memoised for the rest of the request automatically. Several `Require` layers and in-handler `Can` calls share one database read.
+
+Elsewhere, for example in a batch job, ask for it explicitly. Use the memo for one unit of work only:
+
+```go
+ctx = w.WithMemo(ctx)
+for _, loan := range loans {
+	if w.Can(ctx, userID, "loan:view", loan.Branch()) { /* ... */ }
+}
+```
+
+A change made through wardn inside the same context clears the memo, so later checks see it.

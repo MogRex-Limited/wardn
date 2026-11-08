@@ -1,0 +1,60 @@
+---
+title: Caching across instances
+description: Opt in to a shared cache that is fast and never serves stale access.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+By default wardn caches nothing between requests, so a revocation takes effect on the very next request. When your traffic needs more, turn on the cache deliberately.
+
+<Tabs>
+<TabItem label="Several instances (Redis)">
+```go
+rdb := redis.NewClient(&redis.Options{Addr: addr, Password: pw, TLSConfig: tlsConfig})
+
+w := wardn.MustNew(wardn.Config{
+	File:        "wardn.yaml",
+	Store:       wardnsql.MustNew(db),
+	Cache:       wardnredis.MustNew(rdb, "lending-app"), // namespace: one per application
+	CacheSecret: secrets.Get("WARDN_CACHE_SECRET"),       // 32+ random bytes, same on every instance
+})
+```
+</TabItem>
+<TabItem label="One instance (memory)">
+```go
+w := wardn.MustNew(wardn.Config{
+	File:  "wardn.yaml",
+	Store: wardnsql.MustNew(db),
+	Cache: wardn.NewMemoryCache(),
+})
+```
+
+Correct only when a single instance runs: other instances couldn't see its invalidations.
+</TabItem>
+</Tabs>
+
+## Why it never serves stale access
+
+- **It caches data, never decisions.** wardn caches what it reads from the store and still evaluates every check against the clock. Cached time-limited access ends at exactly the right moment.
+- **Every change invalidates instantly, everywhere.** Each tenant has a version counter in the cache. Every change through wardn bumps it before writing and again after, so no instance can keep serving the old state, even if it read the old data in between.
+- **A failing cache never makes wardn wrong.** Read errors fall back to the store. If the cache can't be invalidated before a change, the change isn't made.
+- **Entries are signed.** Every value carries an HMAC over its key and content, so someone who can write to your Redis still can't plant a fake "super admin" entry.
+
+This is tested by running two instances that share a cache, making random changes through either one, and checking 72,000 answers against an independent reference: none was ever stale.
+
+## The TTL is only a safety net
+
+`CacheTTL` (default 5 seconds, maximum 5 minutes) only matters for changes wardn can't see:
+
+- **Rows edited directly in the database.** Call `w.InvalidateCache(ctx, scope)` afterwards.
+- **Scopes moved in your own data when you use `ParentOf`.** Call `w.InvalidateCache(ctx, scope)` after moving.
+
+## Redis requirements
+
+<Aside type="caution">
+- **Set `CacheSecret`.** wardn refuses to start with a shared cache and no secret.
+- **Keep Redis private**, with authentication and TLS.
+- **Use `maxmemory-policy noeviction` or a `volatile-*` policy.** wardn's version counters have no expiry and must never be evicted. A lost counter could make old entries reachable again for one TTL.
+</Aside>
+
+Redis Cluster and Valkey work: all of an application's keys share one hash slot.

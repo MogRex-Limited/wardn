@@ -112,6 +112,12 @@ Pushing the tag starts `.github/workflows/release.yml`. It:
 
 Anyone can verify a downloaded binary with `gh attestation verify <file> --repo MogRex-Limited/wardn`. Developers who install with `go install` are protected by the Go checksum database instead.
 
+### Documentation site
+
+The site in `website/` is built with Astro Starlight. CI builds it on every change and fails on any broken internal link or vulnerable dependency (`npm audit`). Dependabot proposes npm and container-image updates weekly.
+
+Until the open-source milestone, host it **internally only**: build the container (`docker build -t wardn-docs website/`) and run it on an internal host or behind company sign-in. It serves static files only, as a non-root user, with strict security headers.
+
 ### Deep checks
 
 `.github/workflows/deep.yml` runs a 5-minute-per-target fuzzing campaign and mutation testing every week. Treat a failure as a security issue: a fuzz crash uploads its input as an artifact. Commit that input under `testdata/fuzz/` with the fix, so it becomes a permanent regression test.

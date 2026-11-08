@@ -1,0 +1,98 @@
+---
+title: Protect HTTP routes
+description: Require permissions on routes with net/http or chi, and set the scope from the URL.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+wardn's middleware has the standard `func(http.Handler) http.Handler` shape, so it works with `net/http`, chi, and any router that uses it. There is no adapter to install.
+
+## Require a permission
+
+<Tabs>
+<TabItem label="chi">
+```go
+r := chi.NewRouter()
+r.Use(authenticate) // yours: puts the user ID in the context with wardn.WithUser
+
+r.With(w.Require("report:export")).Get("/reports", exportReports)
+
+r.Route("/branches/{branchID}", func(r chi.Router) {
+	r.Use(w.ScopeFrom("branch", wardn.PathValue("branchID")))
+	r.With(w.Require("loan:create")).Post("/loans", createLoan)
+	r.With(w.RequireAny("loan:view", "loan:approve")).Get("/loans", listLoans)
+})
+```
+</TabItem>
+<TabItem label="net/http">
+```go
+mux := http.NewServeMux()
+branch := w.ScopeFrom("branch", wardn.PathValue("branchID"))
+
+mux.Handle("POST /branches/{branchID}/loans",
+	branch(w.Require("loan:create")(http.HandlerFunc(createLoan))))
+
+http.ListenAndServe(":8080", authenticate(mux))
+```
+</TabItem>
+</Tabs>
+
+| Middleware | Lets the request through when the user holds |
+|---|---|
+| `Require(a, b, …)` | **all** of the permissions |
+| `RequireAny(a, b, …)` | **at least one** of the permissions |
+
+## Set the scope from the URL
+
+`ScopeFrom(scopeType, id)` tells wardn where the request acts. `wardn.PathValue(name)` reads a path parameter, through Go's standard `r.PathValue`. Both `net/http`'s `ServeMux` and chi (v5.1+) fill it in.
+
+- **Place `ScopeFrom` after routing.** With chi, put it inside `r.Route` or `r.With`, where the parameter exists. Placed too early, the ID is empty and every request gets `400`.
+- **The innermost `ScopeFrom` wins.** An organisation route can contain branch routes, each setting its own scope.
+- **Without `ScopeFrom`, a route checks at global**, where only global assignments apply. That's safe, but usually not what a tenant route wants.
+
+<Aside type="tip">If a route acts on a specific record, such as `/loans/{id}`, check against **that record's** scope inside the handler too (`w.Can(ctx, user, "loan:approve", loan.Branch())`). The URL says which branch the caller claims; the record says which branch it really belongs to.</Aside>
+
+## What the user sees
+
+| Situation | Status | Handler runs? |
+|---|---|---|
+| Allowed | your handler's status | yes |
+| No user in the context | `401` | no |
+| Missing permission | `403` | no |
+| Invalid or missing scope ID in the URL | `400` | no |
+| Database error | `500` | no |
+
+Error bodies are generic JSON, such as `{"error":"forbidden"}`, with `nosniff` and `no-store` headers. They never reveal which permission or role was missing. The details go to [your audit hook](/guides/audit/).
+
+## Customising
+
+```go
+wardn.Config{
+	// Read the user from somewhere other than the context:
+	UserFrom: func(r *http.Request) (string, bool) { return sessionUser(r) },
+
+	// Write your own error responses:
+	OnError: func(w http.ResponseWriter, r *http.Request, err error) {
+		status := wardn.HTTPStatus(err) // 401, 403, 400 or 500
+		var denied *wardn.DeniedError
+		if errors.As(err, &denied) {
+			log.Info("denied", "decisions", denied.Decisions)
+		}
+		writeProblemJSON(w, status)
+	},
+}
+```
+
+## Typos fail at startup
+
+`Require` with an undefined permission, and `ScopeFrom` with an undeclared scope type, **panic when the route is registered**:
+
+```text
+wardn: permission "loan:aprove" is not defined; did you mean "loan:approve"? (in Require)
+```
+
+The application never starts with a broken route.
+
+## Prove no route was forgotten
+
+The most common real-world authorization bug is a route someone forgot to protect. `wardntest.AuditRoutes` calls every route as a signed-in user with **no roles** and fails the test for any route that doesn't answer `403`. See [Testing](/guides/testing/#find-unprotected-routes).

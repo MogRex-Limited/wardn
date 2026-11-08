@@ -1,0 +1,81 @@
+---
+title: Installation
+description: Add wardn and the packages you need to your Go module.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Requirements
+
+- **Go 1.26 or newer.** wardn supports the two most recent Go releases, matching Go's own security-support policy.
+- **A database** for production: PostgreSQL 13+, MySQL 8.0+, MariaDB 10.6+, SQLite 3.24+ or MongoDB 6.0+. Tests and demos can use the built-in in-memory store.
+
+## Access while the repository is private
+
+wardn is an internal library until it is open-sourced, so Go must be told to fetch it directly from GitHub with your credentials. Do this once per machine:
+
+```bash
+go env -w GOPRIVATE=github.com/MogRex-Limited/*
+git config --global url."git@github.com:MogRex-Limited/".insteadOf "https://github.com/MogRex-Limited/"
+```
+
+The second line makes Go use your SSH key. In CI, provide a read-only deploy key or token instead.
+
+## Packages
+
+wardn is split so that each product downloads only what it uses. The core has no dependencies beyond the Go standard library and a YAML parser.
+
+| You need | Import | Install |
+|---|---|---|
+| The library, the in-memory store and cache, and the HTTP middleware | `github.com/MogRex-Limited/wardn` | `go get github.com/MogRex-Limited/wardn` |
+| PostgreSQL, MySQL, MariaDB or SQLite | `github.com/MogRex-Limited/wardn/store/sql` | included in the core module |
+| MongoDB | `github.com/MogRex-Limited/wardn/store/mongo` | `go get github.com/MogRex-Limited/wardn/store/mongo` |
+| A cache shared by several instances (Redis or Valkey) | `github.com/MogRex-Limited/wardn/cache/redis` | `go get github.com/MogRex-Limited/wardn/cache/redis` |
+| Test helpers | `github.com/MogRex-Limited/wardn/wardntest` | included in the core module |
+
+The SQL store uses Go's standard `database/sql`, so you bring the driver you already use:
+
+<Tabs>
+<TabItem label="PostgreSQL">
+```go
+import _ "github.com/jackc/pgx/v5/stdlib" // or github.com/lib/pq
+
+db, err := sql.Open("pgx", os.Getenv("DATABASE_URL"))
+```
+</TabItem>
+<TabItem label="MySQL / MariaDB">
+```go
+import _ "github.com/go-sql-driver/mysql"
+
+db, err := sql.Open("mysql", os.Getenv("DATABASE_DSN"))
+```
+</TabItem>
+<TabItem label="SQLite">
+```go
+import _ "modernc.org/sqlite"
+
+// A busy timeout lets concurrent writers wait instead of failing.
+db, err := sql.Open("sqlite", "file:app.db?_pragma=busy_timeout(5000)")
+```
+</TabItem>
+</Tabs>
+
+wardn detects which database it is talking to from the driver.
+
+## The command-line tool
+
+The `wardn` CLI validates policy files and generates Go constants from them:
+
+```bash
+go install github.com/MogRex-Limited/wardn/cmd/wardn@latest
+wardn check            # validate wardn.yaml
+wardn gen              # write perm/perm.go
+```
+
+Signed release binaries for Linux, macOS and Windows are also published with each release, with build provenance you can verify:
+
+```bash
+gh attestation verify wardn_v1.0.0_linux_amd64 --repo MogRex-Limited/wardn
+```
+
+<Aside>wardn is pre-release (`v0.x`). The API may still change before `v1.0.0`; from then on, breaking changes require a new major version.</Aside>

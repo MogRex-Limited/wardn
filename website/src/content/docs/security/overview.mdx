@@ -1,0 +1,55 @@
+---
+title: Security model
+description: What wardn guarantees, what it expects from you, and where the boundaries are.
+---
+
+import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+wardn decides who can do what in every product that uses it. A flaw in wardn would be a flaw everywhere, so its security model is explicit: what it guarantees, and what it relies on.
+
+## What wardn guarantees
+
+| Guarantee | How |
+|---|---|
+| **Default deny** | No role, no access. A forgotten grant fails safe. |
+| **Deny wins** | A deny from any role beats an allow from every role. |
+| **Errors never grant** | Any failure (database, cache, invalid input) results in "no", and HTTP middleware never runs the handler. |
+| **Tenant isolation** | A role applies only in its scope and below. wardn re-checks every row a store or cache returns. |
+| **No privilege escalation** | The [escalation guard](/guides/escalation-guard/) stops anyone granting, editing, removing or restricting beyond their own power. |
+| **Typos can't ship** | Undefined permissions, roles and scope types stop the application at startup. |
+| **Exact identity** | IDs compare byte for byte on every database, even those whose default comparison ignores case. |
+| **Timely revocation** | Revocations and expiries apply on the next check, with or without caching. |
+| **No information leaks** | Error responses reveal nothing. Role management reveals nothing to those who may not manage. |
+| **Nothing changes unrecorded** | Every change passes through your audit hook first, and can be vetoed. |
+| **No hidden behaviour** | No network calls, telemetry, global logging, `unsafe` or runtime code loading. |
+
+## What wardn relies on
+
+<Aside type="caution">These are your responsibility. wardn's guarantees depend on them.</Aside>
+
+- **Authentication is correct.** The user ID that reaches wardn is genuine. wardn doesn't verify identity.
+- **The policy file is trusted.** It is code: reviewed and deployed like code.
+- **The database is protected.** Anyone who can write to wardn's tables can grant themselves anything.
+- **`Link` and `ParentOf` reflect the truth.** Whoever controls links controls inheritance. Never expose `Link` to end users.
+- **Shared caches are private** and configured with a secret. Entries are signed, so the cache can't forge access, but it must still not evict wardn's counters.
+- **Clocks are synchronised** (NTP), for time-limited access.
+
+## What wardn doesn't cover
+
+- **Business rules**, such as amount limits or maker-checker approval. Check these after wardn says yes.
+- **Routes that never call wardn.** Use [`AuditRoutes`](/guides/testing/#find-unprotected-routes) to find them.
+- **Records that belong to another tenant than the URL claims.** See [the confused-deputy trap](/guides/multi-tenancy/#the-confused-deputy-trap).
+
+## Supply chain
+
+wardn itself must not become the way in:
+
+- **Minimal dependencies.** The core uses the Go standard library and one YAML parser. Every dependency is on a reviewed allowlist enforced in CI.
+- **Security gates on every change:** `govulncheck`, `gosec`, `staticcheck`, the race detector and module verification.
+- **Pinned CI.** Every GitHub Action is pinned to a commit, with read-only tokens.
+- **Verifiable releases.** Tags are signed, and binaries ship with Sigstore build provenance.
+
+<CardGrid>
+	<LinkCard title="Threat model" description="Every known threat and its mitigation." href="/security/threat-model/" />
+	<LinkCard title="How wardn is tested" description="The evidence behind these guarantees." href="/security/testing/" />
+</CardGrid>

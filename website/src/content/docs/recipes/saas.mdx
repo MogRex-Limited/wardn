@@ -1,0 +1,84 @@
+---
+title: Multi-tenant SaaS
+description: Workspaces and projects, owners and members, customer-defined roles, and object-level access.
+---
+
+A B2B product where each customer company has a *workspace*, each workspace contains *projects*, and customers want to define their own roles.
+
+## The policy
+
+```yaml title="wardn.yaml"
+scopes:
+  workspace: {}
+  project: { parent: workspace }
+
+permissions:
+  project:view:     View projects
+  project:edit:     Edit projects
+  project:create:   Create projects
+  project:delete:   Delete projects
+  member:invite:    Invite people
+  billing:manage:   Manage billing
+
+roles:
+  workspace_owner:
+    assignable_at: [workspace]
+    allow: ["*"]
+  workspace_member:
+    assignable_at: [workspace]
+    allow: [project:view, project:create]
+  project_editor:
+    assignable_at: [project]
+    allow: [project:view, project:edit]
+```
+
+## Object-level access with project scopes
+
+Scopes can be as fine as your objects. Making `project` a scope gives per-project access with no extra machinery:
+
+```go
+w.Link(ctx, wardn.NewScope("project", "p-42"), wardn.NewScope("workspace", "acme"))
+
+w.Assign(asOwner, "contractor", "project_editor", wardn.NewScope("project", "p-42"))
+// The contractor can edit p-42, and nothing else in Acme.
+```
+
+## Customer-defined roles
+
+Workspace owners hold `*` in their workspace, including `wardn:roles.manage`, so they can define roles that exist only in their workspace:
+
+```go
+role, err := w.CreateRole(asOwner, acme, wardn.RoleSpec{
+	Name:         "Billing Admin",
+	Allow:        []string{"billing:manage", "project:view"},
+	AssignableAt: []string{"workspace"},
+})
+```
+
+Another customer never sees "Billing Admin", and can create their own role with the same name.
+
+## Signing up a new customer
+
+```go
+func (s *Signup) CreateWorkspace(ctx context.Context, ownerID, workspaceID string) error {
+	// No user holds anything in the new workspace yet, so use System().
+	return s.wardn.System().Assign(ctx, ownerID, "workspace_owner", wardn.NewScope("workspace", workspaceID))
+}
+```
+
+## Routes
+
+```go
+r.Route("/workspaces/{ws}", func(r chi.Router) {
+	r.Use(w.ScopeFrom("workspace", wardn.PathValue("ws")))
+	r.With(w.Require("member:invite")).Post("/invites", invite)
+	r.With(w.Require("billing:manage")).Put("/billing", updateBilling)
+
+	r.Route("/projects/{p}", func(r chi.Router) {
+		r.Use(w.ScopeFrom("project", wardn.PathValue("p")))
+		r.With(w.Require("project:edit")).Put("/", editProject)
+	})
+})
+```
+
+Remember the [confused-deputy trap](/guides/multi-tenancy/#the-confused-deputy-trap): load project `p` only within workspace `ws`, or check against the project's own scope.

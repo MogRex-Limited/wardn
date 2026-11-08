@@ -147,3 +147,24 @@ jobs:
           cache: false
       - name: SQL, MongoDB and Redis modules against real servers
         run: make test-modules
+
+  docs:
+    name: Docs site
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - name: Install exactly the locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Known vulnerabilities in site dependencies
+        run: npm audit --audit-level=moderate
+      - name: Build, failing on any broken internal link
+        run: npm run build

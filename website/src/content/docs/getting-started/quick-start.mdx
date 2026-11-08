@@ -1,0 +1,144 @@
+---
+title: Quick start
+description: Protect your first route with wardn in about ten minutes.
+---
+
+import { Steps, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+This guide adds wardn to an existing Go web service that uses chi and PostgreSQL. By the end, a route is protected, your first administrator is set up, and you have a test proving it works.
+
+<Aside>wardn needs Go 1.26 or newer. While the repository is private, do the [installation](/getting-started/installation/) steps once first.</Aside>
+
+<Steps>
+
+1. **Add wardn to your module**
+
+   ```bash
+   go get github.com/MogRex-Limited/wardn
+   ```
+
+2. **Describe your product in `wardn.yaml`**
+
+   Put the file next to your `main.go`. It lists where roles apply (*scopes*), what your code checks (*permissions*), and the *roles* that bundle them.
+
+   ```yaml title="wardn.yaml"
+   scopes:
+     organisation: {}
+     branch: { parent: organisation }
+
+   permissions:
+     customer:view: View customers
+     loan:create:   Create loan applications
+     loan:approve:  Approve loans
+
+   roles:
+     super_admin:
+       assignable_at: [global]
+       allow: ["*"]
+     org_admin:
+       assignable_at: [organisation]
+       allow: ["*"]
+     teller:
+       assignable_at: [branch]
+       allow: [customer:view, loan:create]
+   ```
+
+   Every permission needs a short description: admin screens show it to people choosing permissions. Two management permissions, `wardn:roles.assign` and `wardn:roles.manage`, are built in and always available. `"*"` grants everything, including them.
+
+3. **Start wardn in `main`**
+
+   ```go title="main.go" ins={3,9-12}
+   import (
+   	"github.com/MogRex-Limited/wardn"
+   	wardnsql "github.com/MogRex-Limited/wardn/store/sql"
+   )
+
+   func main() {
+   	db := openDatabase() // your existing *sql.DB
+
+   	w := wardn.MustNew(wardn.Config{
+   		File:  "wardn.yaml",
+   		Store: wardnsql.MustNew(db),
+   	})
+   	// ...
+   }
+   ```
+
+   `MustNew` validates the policy and creates wardn's tables. If anything in `wardn.yaml` is wrong, the app stops here with a precise message.
+
+4. **Tell wardn who the user is**
+
+   wardn doesn't log people in. Your existing authentication middleware puts the user's ID in the request context:
+
+   ```go title="auth.go" ins={4}
+   func authenticate(next http.Handler) http.Handler {
+   	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+   		userID := verifyToken(r) // your code
+   		r = r.WithContext(wardn.WithUser(r.Context(), userID))
+   		next.ServeHTTP(w, r)
+   	})
+   }
+   ```
+
+5. **Protect your routes**
+
+   ```go title="routes.go"
+   r := chi.NewRouter()
+   r.Use(authenticate)
+
+   r.Route("/branches/{branchID}", func(r chi.Router) {
+   	r.Use(w.ScopeFrom("branch", wardn.PathValue("branchID")))
+   	r.With(w.Require("customer:view")).Get("/customers", listCustomers)
+   	r.With(w.Require("loan:create")).Post("/loans", createLoan)
+   	r.With(w.Require("loan:approve")).Post("/loans/{id}/approve", approveLoan)
+   })
+   ```
+
+   A user without the permission gets `403`. A request with no user gets `401`. Your handler never runs for either.
+
+6. **Create the first administrator**
+
+   Nobody holds any role yet, so seed one. `System()` makes changes without a signed-in user, for setup scripts and jobs:
+
+   ```go
+   err := w.System().Assign(ctx, "user-001", "super_admin", wardn.Global)
+   ```
+
+7. **Prove it with a test**
+
+   `wardntest` runs your real policy in memory, with no database:
+
+   ```go title="routes_test.go"
+   func TestTellersCannotApproveLoans(t *testing.T) {
+   	w := wardntest.New(t, "wardn.yaml")
+   	router := newRouter(w)
+
+   	req := httptest.NewRequest("POST", "/branches/lagos/loans/7/approve", nil)
+   	req = wardntest.AsRoleIn(t, w, req, wardn.NewScope("branch", "lagos"), "teller")
+
+   	rec := httptest.NewRecorder()
+   	router.ServeHTTP(rec, req)
+   	if rec.Code != http.StatusForbidden {
+   		t.Fatalf("status %d, want 403", rec.Code)
+   	}
+   }
+   ```
+
+</Steps>
+
+That's it: roles defined, tables created, routes protected, first admin seeded, and a test that fails if anyone breaks it.
+
+## What just happened
+
+- **The policy was validated at startup.** Unknown permissions, misspelled scope types and invalid names would have stopped the app, with the file, line and a suggestion.
+- **`ScopeFrom` set where the request acts** (branch `lagos`). An organisation admin of the organisation that owns `lagos` is allowed there automatically, once wardn knows that `lagos` belongs to it (see [Scopes and hierarchy](/concepts/scopes/)).
+- **`Require` checked the permission** against the user's roles at that scope and every scope above it, then let the request through or stopped it.
+
+## Next steps
+
+<CardGrid>
+	<LinkCard title="Concepts" description="Understand exactly how wardn decides." href="/concepts/overview/" />
+	<LinkCard title="Multi-tenancy" description="Link branches to organisations so roles flow down." href="/guides/multi-tenancy/" />
+	<LinkCard title="Typo-proof names" description="Generate Go constants so a misspelled permission won't compile." href="/guides/code-generation/" />
+	<LinkCard title="Multi-branch bank recipe" description="A complete, realistic setup." href="/recipes/bank/" />
+</CardGrid>
