@@ -40,6 +40,26 @@ updates:
     open-pull-requests-limit: 5
     labels: [dependencies]
 
+  - package-ecosystem: npm
+    directory: /website
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      site:
+        patterns: ["*"]
+    labels: [dependencies, docs]
+
+  - package-ecosystem: docker
+    directory: /website
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    labels: [dependencies, docs]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

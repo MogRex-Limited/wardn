@@ -1,0 +1,64 @@
+---
+title: Roles
+description: System roles and custom roles, allow and deny, and where roles can be assigned.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+A **role** is a named set of permissions. wardn has two kinds, which behave identically when checking access and differ only in who defines them.
+
+| | System roles | Custom roles |
+|---|---|---|
+| **Defined by** | Developers, in `wardn.yaml` | Administrators, at runtime |
+| **Stored in** | The policy file, in version control | Your database |
+| **Editable from an admin screen** | No | Yes |
+| **Visible in** | Every scope | The scope that owns it, and every scope below |
+| **Identified by** | Its name (`teller`) | A generated ID (`cr-…`) plus a display name |
+| **May deny** | Yes | No |
+
+## System roles
+
+```yaml title="wardn.yaml"
+roles:
+  teller:                                  # full form
+    description: Front-desk staff
+    assignable_at: [branch]
+    allow: [customer:view, loan:create]
+
+  auditor: [customer:view, report:export]  # short form: a list is an allow list
+
+  ops_admin:
+    description: Everything except approving loans
+    allow: ["*"]
+    deny: [loan:approve]
+
+  suspended:                               # a role that only takes away
+    deny: ["*"]
+```
+
+- **`allow`** lists what the role grants.
+- **`deny`** lists what the role takes away. A deny from *any* of a user's roles beats an allow from *every* other role.
+- **`assignable_at`** limits which scope types the role may be assigned at: `teller` only at branches, `super_admin` only at `global`. If it's omitted, the role can be assigned anywhere.
+
+Role names use lowercase letters, digits and `_`.
+
+## Custom roles
+
+Administrators can create roles from your product's admin screens:
+
+```go
+role, err := w.CreateRole(ctx, wardn.NewScope("organisation", "acme"), wardn.RoleSpec{
+	Name:         "Senior Teller",
+	Description:  "Tellers who can also approve loans",
+	Allow:        []string{"customer:view", "loan:create", "loan:approve"},
+	AssignableAt: []string{"branch"},
+})
+```
+
+Custom roles **belong to a scope**. A role created in organisation `acme` is visible and assignable only inside `acme`, never in another tenant. Editing one changes it for everyone who holds it, immediately. See [Custom roles and admin screens](/guides/custom-roles/) for the full lifecycle.
+
+<Aside>Custom roles only grant; they can't deny. Admins rarely predict how a deny interacts with other roles, and a mistaken deny locks people out in confusing ways. Restrictive roles are written by developers, as system roles.</Aside>
+
+## Permissions are code, roles are data
+
+This split is the heart of wardn's design. Developers own the catalog of permissions, because the code checks them. Administrators own how those permissions are bundled and handed out, within the limits of the [escalation guard](/guides/escalation-guard/).

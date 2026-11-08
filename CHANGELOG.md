@@ -137,6 +137,12 @@ All notable changes to wardn are documented here. The format follows
     testing (`make mutation`, 46 security mutants); five new fuzz targets
     and `make fuzz`; a weekly "Deep checks" CI workflow running both.
 
+- Documentation site (M8, `website/`): a landing page and 37 documentation
+  pages built with Astro Starlight: getting started, concepts, guides,
+  recipes, reference, security and project. It has full-text search, link
+  validation on every build, `make docs` and `make docs-build`, a hardened
+  container for internal hosting, and a CI job.
+
 ### Removed
 
 - CodeQL workflow, until the repository is public or GitHub Advanced

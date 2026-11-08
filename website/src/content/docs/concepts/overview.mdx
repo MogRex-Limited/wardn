@@ -1,0 +1,39 @@
+---
+title: Concepts overview
+description: The four ideas behind every wardn decision.
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+wardn has four concepts. Everything else is built from them.
+
+| Concept | What it is | Example | Defined by |
+|---|---|---|---|
+| **Permission** | An action your code checks | `loan:approve` | Developers, in `wardn.yaml` |
+| **Role** | A named set of permissions | `teller` | Developers (system roles) or administrators (custom roles) |
+| **Scope** | Where a role applies | `branch:lagos` | Your application's data |
+| **Assignment** | A user holding a role in a scope | `bayo` is `teller` at `branch:lagos` | Administrators, at runtime |
+
+A check asks: *does this user hold this permission at this scope?* wardn gathers the user's assignments at that scope and at every scope above it, and applies a few fixed rules.
+
+```text
+global
+ └── organisation:acme                ada  → org_admin
+      └── region:south
+           └── branch:lagos           bayo → teller
+
+Can bayo   do loan:create  at branch:lagos ?  yes (teller)
+Can bayo   do loan:approve at branch:lagos ?  no  (no role grants it)
+Can ada    do loan:approve at branch:lagos ?  yes (org_admin, inherited from acme)
+Can ada    do loan:approve at organisation:globex ?  no (another tenant)
+```
+
+## Read on
+
+<CardGrid>
+	<LinkCard title="Permissions" description="Naming, wildcards, and the catalog." href="/concepts/permissions/" />
+	<LinkCard title="Roles" description="System roles, custom roles, allow and deny." href="/concepts/roles/" />
+	<LinkCard title="Scopes and hierarchy" description="Your tenancy, your tree." href="/concepts/scopes/" />
+	<LinkCard title="Assignments" description="Who holds what, where, and until when." href="/concepts/assignments/" />
+	<LinkCard title="How a decision is made" description="The seven rules, in order." href="/concepts/evaluation/" />
+</CardGrid>

@@ -1,0 +1,48 @@
+---
+title: Typo-proof names
+description: Generate Go constants from wardn.yaml so a misspelled permission won't compile.
+---
+
+wardn already rejects unknown permissions at startup. `wardn gen` goes one step further: a misspelled permission becomes a **compile error**.
+
+## Generate
+
+```bash
+wardn gen                      # reads wardn.yaml, writes perm/perm.go
+wardn gen -o internal/authz/names.go
+```
+
+Or keep it next to the code that uses it:
+
+```go
+//go:generate wardn gen -f ../wardn.yaml -o perm/perm.go
+```
+
+## Use
+
+```go
+r.With(w.Require(perm.LoanApprove)).Post("/loans/{id}/approve", approveLoan)
+
+w.System().Assign(ctx, userID, perm.RoleTeller, perm.ScopeBranch("lagos"))
+```
+
+The generated package contains:
+
+| From | Becomes |
+|---|---|
+| Permission `loan:approve` | `perm.LoanApprove` |
+| Permission `loan:approve_own` | `perm.LoanApproveOwn` |
+| Built-in `wardn:roles.assign` | `perm.WardnRolesAssign` |
+| Role `teller` | `perm.RoleTeller` |
+| Scope type `branch` | `perm.ScopeBranch(id)` |
+
+Descriptions from your policy become doc comments. If two names would become the same Go identifier, `wardn gen` stops and names both.
+
+## Keep it current in CI
+
+```bash
+wardn gen -check   # fails if perm/perm.go is out of date with wardn.yaml
+wardn check        # fails if wardn.yaml is invalid
+```
+
+Nothing in a policy file can inject code into the output: identifiers are built only from characters policy names allow, values are quoted, and descriptions can't contain line breaks.

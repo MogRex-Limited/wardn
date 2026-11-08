@@ -1,0 +1,37 @@
+---
+title: Contributing
+description: How to change wardn safely.
+---
+
+wardn decides who can do what in every product that uses it, so the bar for changes is deliberately high. The full rules are in [`CONTRIBUTING.md`](https://github.com/MogRex-Limited/wardn/blob/main/CONTRIBUTING.md).
+
+## Set up
+
+```bash
+git clone git@github.com:MogRex-Limited/wardn.git
+cd wardn
+make hooks       # every push runs every check first
+make check       # lint, security lint, tests, vulnerabilities, dependencies
+```
+
+## The rules
+
+1. **Tests come with the code.** Security behaviour needs a test that would fail if the protection were removed.
+2. **Threats are traceable.** A fix for a threat in the threat model gets a test named `TestThreat_<ID>_…`.
+3. **Fail closed.** Every error path denies.
+4. **No silent suppression.** Every `//nolint` names its linter and explains why.
+5. **No hidden behaviour:** no network calls, telemetry, global logging or `unsafe`.
+6. **New dependencies need approval** and an entry in the allowlist.
+7. **Public API changes start with the design document.**
+8. **Commits are signed.**
+
+## Working on this site
+
+The documentation lives in `website/` and is built with Astro Starlight:
+
+```bash
+cd website
+npm ci
+npm run dev      # http://localhost:4321
+npm run build    # also checks every internal link
+```

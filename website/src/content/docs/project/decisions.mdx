@@ -1,0 +1,22 @@
+---
+title: Design decisions
+description: The choices that shape wardn, and why they were made.
+---
+
+wardn is opinionated. These are its most important decisions. The full design document is [`docs/DESIGN.md`](https://github.com/MogRex-Limited/wardn/blob/main/docs/DESIGN.md).
+
+| Decision | Choice | Why |
+|---|---|---|
+| **What wardn models** | Roles and permissions in a product-defined scope tree | Covers the needs of nearly every product without a policy language. Relationship graphs at Google scale are left to OpenFGA and SpiceDB. |
+| **Where it runs** | A library inside your application | No server to operate, no network hop per check. |
+| **Permissions vs roles** | Permissions are code; roles are data | Admins combine what developers made checkable, never more. |
+| **Fixed evaluation rules** | Default deny, deny wins, errors deny | The same meaning in every product; nothing to misconfigure. |
+| **Custom roles** | Supported, grants only, owned by a scope | Every admin panel needs them; denies from admins cause confusing lockouts. |
+| **The escalation guard** | On for every user-initiated change; counts denies and whole wildcards | The most common serious flaw in home-grown RBAC. |
+| **Guard scope** | Evaluated where the change happens | Checking every descendant scope is unbounded; a deny restricts its holder, not what they delegate. |
+| **Time-limited access** | Built in, checked on every request | Common in banking; adding it later would force a migration on every product. |
+| **Audit** | Before every change, can veto | Nothing changes without a record. |
+| **Caching** | Off by default; caches data, not decisions; signed entries | A stale permission is a security bug. |
+| **Storage** | A small interface plus a conformance suite | Any database, proven correct. |
+| **Delivery** | Built complete, hardened and reviewed before adoption | A standard library must not be hardened while products depend on it. |
+| **SQL Server** | Not supported until a product needs it | Products use PostgreSQL and MySQL; untested support is a liability. |

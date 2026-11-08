@@ -1,0 +1,51 @@
+---
+title: Assignments
+description: Giving a user a role in a scope, permanently or for a limited time.
+---
+
+An **assignment** gives a user a role in a scope. It is the only runtime data wardn needs about people:
+
+```text
+ada   → org_admin     at organisation:acme
+bayo  → teller        at branch:lagos
+tolu  → loan_officer  at branch:lagos   from Monday until Friday
+root  → super_admin   at global
+```
+
+wardn never stores users themselves, only the IDs your authentication provides.
+
+## Making assignments
+
+```go
+// On behalf of the signed-in user (checked by the escalation guard):
+err := w.Assign(ctx, "bayo", "teller", wardn.NewScope("branch", "lagos"))
+
+// With no user acting, for setup scripts and jobs:
+err := w.System().Assign(ctx, "root", "super_admin", wardn.Global)
+
+// Removing:
+err := w.Revoke(ctx, "bayo", "teller", wardn.NewScope("branch", "lagos"))
+```
+
+- **One assignment per user, role and scope.** Assigning again replaces the time window.
+- **Revoking is idempotent.** Revoking something that isn't there is not an error.
+- **`assignable_at` is enforced:** assigning `teller` at an organisation fails with `ErrNotAssignable`.
+
+## Time-limited access
+
+Pass `From` and `Until` for access that starts or ends on its own:
+
+```go
+err := w.Assign(ctx, "tolu", "loan_officer", lagos,
+	wardn.From(monday), wardn.Until(friday))
+```
+
+The window applies from `From` (inclusive) until `Until` (exclusive). It's checked on every request, so access ends at exactly the right moment, and no cleanup job is needed for correctness. See [Time-limited access](/guides/time-limited-access/).
+
+## When roles change underneath
+
+- If a role is removed from the policy, its assignments simply stop granting anything.
+- If a role's `assignable_at` no longer allows a scope type, assignments of it there stop applying.
+- If a custom role is deleted, its assignments grant nothing, even before they are cleaned up.
+
+In each case the leftover assignment is harmless and can still be revoked.

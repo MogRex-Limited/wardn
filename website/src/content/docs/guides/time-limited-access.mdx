@@ -1,0 +1,53 @@
+---
+title: Time-limited access
+description: Grant access that starts and ends on its own, and record when it expires.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Banks and regulated businesses often need access that's temporary: an approver covering leave, a contractor until the end of the month, an auditor for one week.
+
+## Grant it
+
+```go
+err := w.Assign(ctx, "tolu", "loan_officer", lagos,
+	wardn.From(time.Date(2026, 11, 9, 9, 0, 0, 0, lagosTZ)),
+	wardn.Until(time.Date(2026, 11, 13, 17, 0, 0, 0, lagosTZ)))
+```
+
+- `From` alone: access starts later and never ends. `Until` alone: access starts now and ends later.
+- The window includes its start and excludes its end: at exactly 17:00 on the 13th, access is gone.
+- Assigning again replaces the window, for example to extend it, or to make it permanent by passing neither option.
+- Windows must end after they start, may not already have ended, and must fall within years 1 to 9999.
+
+## No cleanup job required
+
+The window is checked on every request against the current time, so access stops at exactly the right moment, even if nothing ever deletes the assignment. This also holds with [caching](/guides/caching/): wardn caches the assignment, never the answer.
+
+## Record expiries in your audit trail
+
+Regulators expect a record of when access ended. The expiry sweeper reports each expired assignment exactly once, through your [audit hook](/guides/audit/) as an `assignment.expired` event:
+
+```go
+// Run in its own goroutine; safe on every instance.
+go w.RunExpiry(ctx, time.Minute, func(err error) { log.Error("expiry sweep", "err", err) })
+```
+
+Or call `w.SweepExpired(ctx)` from your own scheduler. Pass `wardn.RemoveExpired()` to also delete expired assignments once they're reported.
+
+If your audit hook fails, the sweep stops, and those expiries are reported again next time. An assignment that was granted again while a sweep was running is never removed.
+
+## Testing with time
+
+Use a fake clock to move time forward in tests:
+
+```go
+clock := wardntest.NewClock(time.Date(2026, 11, 9, 9, 0, 0, 0, time.UTC))
+w := wardntest.New(t, "wardn.yaml", wardntest.WithClock(clock))
+
+// ... assign with Until(...)
+clock.Advance(48 * time.Hour)
+// ... check that access has ended
+```
+
+<Aside>Expiry is evaluated against the clock of the server running the check. Keep your servers' clocks synchronised with NTP.</Aside>

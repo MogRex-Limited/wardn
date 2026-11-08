@@ -1,0 +1,65 @@
+---
+title: Audit trail
+description: Record every decision and every change to who can do what.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+wardn has two hooks. `OnChange` sees every change to who can do what; `OnDecision` sees every check.
+
+## Every change: OnChange
+
+```go
+wardn.Config{
+	OnChange: func(ctx context.Context, e wardn.Event) error {
+		return auditLog.Write(ctx, AuditRecord{
+			Type:   string(e.Type), // "assignment.created", "role.updated", ...
+			Actor:  e.Actor,        // the signed-in user who made the change
+			System: e.System,       // true for System() calls and expiry sweeps
+			User:   e.User,
+			Role:   e.Role,
+			Scope:  e.Scope.String(),
+			At:     e.At,
+			Failed: e.Err != nil,
+		})
+	},
+}
+```
+
+| Event | When |
+|---|---|
+| `assignment.created` | A role is assigned (or its time window replaced) |
+| `assignment.revoked` | A role is revoked |
+| `assignment.expired` | The sweeper records that a time-limited assignment ended |
+| `role.created`, `role.updated`, `role.deleted` | A custom role changes (`Before` and `After` hold the role) |
+| `scope.linked` | A scope is linked to a parent (`Parent` holds it) |
+
+## Nothing changes without a record
+
+`OnChange` runs **before** the change is written, and can stop it:
+
+- **If it returns an error, the change is not made** (`ErrAuditRejected`). If your audit log is down, role changes wait until it's back. That's the right trade-off for regulated products.
+- **If the write then fails, `OnChange` is called again** with `Event.Err` set, so your trail shows the change didn't (fully) happen. Its return value is ignored on that call.
+
+`OnChange` is never called for a change that is abandoned before it's written.
+
+<Aside>A failed change may have been partly applied. For example, deleting a role with `Cascade()` may delete the role but not every assignment. When `Event.Err` is set, the store is the source of truth.</Aside>
+
+## Every decision: OnDecision
+
+```go
+wardn.Config{
+	OnDecision: func(ctx context.Context, d wardn.Decision, err error) {
+		if !d.Allowed {
+			log.Info("access denied", "user", d.User, "permission", d.Permission,
+				"scope", d.Scope.String(), "reason", d.Reason, "err", err)
+		}
+	},
+}
+```
+
+It's called for every `Can`, `Check`, `CanAny`, `CanAll` and `Require`. It must be fast and must not panic. Logging only denials is a common choice.
+
+## System actions are unambiguous
+
+Changes made through `System()`, and expiry sweeps, have `Event.System` set and an empty `Actor`, so they can never be confused with a real user, even one whose ID happens to be `"system"`.

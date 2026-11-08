@@ -1,0 +1,69 @@
+---
+title: Permissions
+description: Actions your code checks, how to name them, and how wildcards work.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+A **permission** is an action your code checks, written `resource:action`:
+
+```yaml title="wardn.yaml"
+permissions:
+  customer:view:    View customer profiles
+  customer:edit:    Edit customer details
+  loan:create:      Create loan applications
+  loan:approve:     Approve loans
+  loan:approve:own: Approve a loan you created
+  report:export:    Export reports
+```
+
+Together these form the **catalog**: every permission your code can check.
+
+## Permissions are code
+
+Developers declare permissions, because the code checks them. Administrators can combine permissions into roles, but they can never invent one. A permission nobody checks would do nothing, and one that's misspelled would silently do nothing.
+
+Every permission needs a description. Admin screens show it ("Approve loans") to people choosing permissions for a role.
+
+## Naming rules
+
+- Two or more segments separated by `:`, such as `loan:approve` or `loan:approve:own`.
+- Each segment uses lowercase letters, digits and `_`, starting with a letter. Dots are allowed inside a segment (`roles.manage`).
+- At most 128 characters.
+
+Anything else is rejected when wardn starts, with the file, line and a suggestion.
+
+## Wildcards
+
+Roles (never checks) may use wildcards:
+
+| Pattern | Matches |
+|---|---|
+| `*` | every permission |
+| `loan:*` | every `loan:` permission, such as `loan:create` and `loan:approve:own`, but not `loans:…` |
+| `loan:approve:*` | every permission starting `loan:approve:` |
+
+A wildcard must match at least one permission in the catalog, which catches typos like `laon:*`.
+
+<Aside type="caution">A wildcard grants permissions added to the catalog **later**, too. `loan:*` written today also grants `loan:write_off` the day someone adds it. Prefer explicit lists for roles that should not grow automatically.</Aside>
+
+## Built-in permissions
+
+Two permissions control role management and are always in the catalog:
+
+| Permission | Allows |
+|---|---|
+| `wardn:roles.assign` | Assigning and revoking roles |
+| `wardn:roles.manage` | Creating, editing and deleting custom roles |
+
+Grant them to roles like any other permission. `*` includes them. Don't declare them in `permissions:`; the `wardn:` prefix is reserved.
+
+## Checking an undefined permission
+
+Checking a permission that isn't in the catalog is an error, never a silent "no":
+
+```text
+wardn: permission "loan:aprove" is not defined; did you mean "loan:approve"?
+```
+
+`Require` goes further and panics when the route is registered, so the mistake stops the application at startup. For compile-time protection, see [Typo-proof names](/guides/code-generation/).

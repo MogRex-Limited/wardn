@@ -1,0 +1,40 @@
+---
+title: App without tenancy
+description: An internal tool or single-company app with a few global roles.
+---
+
+Not every product has tenants. An internal back-office tool might simply have admins, editors and viewers. wardn handles that with no scopes at all.
+
+## The policy
+
+```yaml title="wardn.yaml"
+permissions:
+  article:view:    View articles
+  article:edit:    Edit articles
+  article:publish: Publish articles
+  user:manage:     Manage users
+
+roles:
+  admin:  ["*"]
+  editor: [article:view, article:edit, article:publish]
+  viewer: [article:view]
+```
+
+## Everything happens at global
+
+```go
+w.System().Assign(ctx, "user-001", "admin", wardn.Global)
+
+r.With(w.Require("article:publish")).Post("/articles/{id}/publish", publish)
+```
+
+Routes need no `ScopeFrom`: without one, every check happens at global, where these assignments live.
+
+## Growing later
+
+If the tool later serves several departments, add a scope type and assign roles at departments instead. Existing global assignments keep working everywhere.
+
+```yaml
+scopes:
+  department: {}
+```

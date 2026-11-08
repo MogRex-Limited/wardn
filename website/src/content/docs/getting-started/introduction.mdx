@@ -1,0 +1,51 @@
+---
+title: Introduction
+description: What wardn is, the problem it solves, and when to use it.
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+**wardn is simple, opinionated authorization for Go.** It answers one question for any product: *is this user allowed to do this, here?*
+
+Every product needs roles and permissions, and every product is different. A bank has organisations, regions and branches. A SaaS product has workspaces. A school has schools and classes. wardn doesn't pick a model for you. Each product describes its own world in one file, and wardn does everything else.
+
+## What wardn does
+
+- **Checks access** on every request, with a reason for every decision.
+- **Protects HTTP routes** with one line of middleware, for `net/http` and chi.
+- **Models tenancy and hierarchy**, so an organisation admin automatically acts in every branch of that organisation and nowhere else.
+- **Stores who has which role** in your existing PostgreSQL, MySQL, MariaDB, SQLite or MongoDB database, and creates its tables for you.
+- **Lets administrators create custom roles** at runtime, with an *escalation guard*: nobody can grant more power than they hold.
+- **Grants access for a limited time**, such as a temporary approver until Friday, with no cleanup job required.
+- **Records every change** before it happens, for your audit trail.
+
+## What wardn does not do
+
+wardn is deliberately focused. It does **not**:
+
+- **authenticate users.** Your existing login, JWT or session code says *who* the user is; wardn decides *what they may do*.
+- **evaluate business conditions** such as "approve loans under ₦5M". Check those in your code after wardn says yes.
+- **model relationship graphs at Google scale.** If your core need is "editor of a folder can edit every document inside it" across millions of objects, use OpenFGA or SpiceDB.
+- **run as a separate server.** wardn is a library inside your application.
+
+## Opinionated, on purpose
+
+wardn makes a small number of firm choices, so every product behaves the same way and developers learn it once:
+
+| Choice | Why |
+|---|---|
+| **Default deny.** No role, no access. | Forgotten grants fail safe. |
+| **Deny always wins** over any allow. | Restrictions can't be overridden by accident. |
+| **Any error means "no".** | A database outage never opens the doors. |
+| **Roles flow down the scope tree**, never up or sideways. | Tenants stay isolated. |
+| **Permissions are code; roles are data.** | Admins can combine permissions, but never invent ones your code doesn't check. |
+| **Typos stop the app at startup.** | Mistakes surface in development, not in production. |
+
+None of these can be turned off. That's the point.
+
+## Next steps
+
+<CardGrid>
+	<LinkCard title="Quick start" description="Protect your first route in ten minutes." href="/getting-started/quick-start/" />
+	<LinkCard title="Concepts" description="The four ideas behind every wardn decision." href="/concepts/overview/" />
+</CardGrid>

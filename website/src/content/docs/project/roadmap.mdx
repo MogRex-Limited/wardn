@@ -1,0 +1,29 @@
+---
+title: Roadmap
+description: Where wardn is today and what comes next.
+---
+
+wardn is built complete, hardened and independently reviewed **before** any product adopts it.
+
+| Milestone | Status |
+|---|---|
+| **M0 Design** | ✓ Design document, threat model |
+| **M1 Secure foundation** | ✓ CI security gates, dependency allowlist, signed commits |
+| **M2 Core engine** | ✓ Policy, evaluation rules, scopes, time windows |
+| **M3 Storage** | ✓ PostgreSQL, MySQL, MariaDB, SQLite; conformance suite |
+| **M4 HTTP and tooling** | ✓ Middleware, route audit, CLI, signed releases |
+| **M5 Custom roles** | ✓ Runtime roles, escalation guard, audit, expiry |
+| **M6 Completeness** | ✓ MongoDB, Redis cache |
+| **M7 Hardening** | ✓ Internal security review, fault injection, mutation testing, fuzzing |
+| **M8 Proof and documentation** | In progress: this site, reference applications, usability test |
+| **M9 v1.0** | External security audit, stability guarantee, announcement |
+| **M10 Open source** | After leadership and legal approval |
+
+## Possible future modules
+
+Each will be added only when a real product needs it:
+
+- **Maker-checker:** four-eyes approval for sensitive actions.
+- **Conditions:** simple attribute rules on permissions, such as amount limits.
+- **Router helpers for Gin and Echo.**
+- **A server mode** for services not written in Go.

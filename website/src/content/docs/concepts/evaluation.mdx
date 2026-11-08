@@ -1,0 +1,53 @@
+---
+title: How a decision is made
+description: The fixed rules wardn applies to every check, and how each decision explains itself.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+Every check answers: *does this user hold this permission at this scope?* The rules are fixed. They mean the same thing in every product, and none of them can be configured.
+
+## The seven rules
+
+1. **Default deny.** If no role grants the permission, the answer is no.
+2. **Roles flow down.** A role assigned at a scope applies there and in every scope beneath it.
+3. **Allows add up.** A user's permissions are the union of all their applicable roles.
+4. **Deny wins.** If any applicable role denies the permission, the answer is no, whatever any other role allows.
+5. **Any error means no.** If the database fails, the answer is no and the error is reported.
+6. **Missing roles grant nothing.** An assignment to a role that no longer exists is ignored.
+7. **Time windows are checked every time.** An assignment applies only between its start and its expiry.
+
+## The steps
+
+<Steps>
+
+1. **Validate.** The permission must be in the catalog, the scope type must be declared, and the IDs must be valid. Otherwise the check returns an error.
+2. **Walk up the tree.** Starting at the requested scope, collect its parents up to the top, then add global: `branch:lagos → region:south → organisation:acme → global`.
+3. **Collect assignments.** Load the user's assignments at any of those scopes. wardn re-checks the user and scope of every row it receives, so even a faulty store can't leak another user's or another tenant's roles.
+4. **Filter.** Drop assignments outside their time window, assignments of roles that no longer exist, and roles the policy no longer allows at that scope.
+5. **Decide.** If any remaining role denies the permission, deny. Otherwise, if any role allows it, allow. Otherwise, deny.
+
+</Steps>
+
+## Every decision explains itself
+
+`Check` returns a `Decision` naming the role, the scope and the rule that decided it:
+
+```go
+d, err := w.Check(ctx, "bayo", "loan:approve", lagos)
+// d.Allowed == false
+// d.Reason  == `no role grants "loan:approve" at branch:lagos`
+
+d, err = w.Check(ctx, "ada", "loan:approve", lagos)
+// d.Allowed == true
+// d.Role    == "org_admin"
+// d.At      == organisation:acme
+// d.Rule    == "*"
+// d.Reason  == `granted by role "org_admin" at organisation:acme (rule "*")`
+```
+
+When a deny decides, the decision always names the role responsible. "Why am I locked out?" always has an answer.
+
+## Proven against a reference
+
+wardn's test suite contains a second, deliberately naive implementation of these rules, written separately. On every run the engine and the reference are compared on about 130,000 random checks across 400 random policies, hierarchies and time windows. They must agree on every one.

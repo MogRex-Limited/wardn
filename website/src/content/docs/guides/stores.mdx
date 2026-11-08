@@ -1,0 +1,61 @@
+---
+title: Choosing a store
+description: Where wardn keeps assignments, custom roles and links, and how its schema is managed.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+A store saves wardn's runtime data: assignments, custom roles and scope links. All the authorization logic lives in wardn itself, so every store behaves identically.
+
+| Store | Use for | Package |
+|---|---|---|
+| **SQL** | PostgreSQL 13+, MySQL 8.0+, MariaDB 10.6+, SQLite 3.24+ | `github.com/MogRex-Limited/wardn/store/sql` (`wardnsql`) |
+| **MongoDB** | MongoDB 6.0+, standalone or replica set | `github.com/MogRex-Limited/wardn/store/mongo` (`wardnmongo`) |
+| **Memory** | Tests, demos, and examples (lost on restart) | `wardn.NewMemoryStore()`, the default |
+
+<Tabs>
+<TabItem label="SQL">
+```go
+db, _ := sql.Open("pgx", dsn) // or "mysql", "sqlite"
+w := wardn.MustNew(wardn.Config{
+	File:  "wardn.yaml",
+	Store: wardnsql.MustNew(db), // dialect detected from the driver
+})
+```
+
+Options: `wardnsql.WithTablePrefix("authz_")` (default `wardn_`) and `wardnsql.WithDialect(wardnsql.Postgres)` if detection can't tell.
+</TabItem>
+<TabItem label="MongoDB">
+```go
+client, _ := mongo.Connect(options.Client().ApplyURI(uri))
+w := wardn.MustNew(wardn.Config{
+	File:  "wardn.yaml",
+	Store: wardnmongo.MustNew(client.Database("lending")),
+})
+```
+
+Option: `wardnmongo.WithCollectionPrefix("authz_")`. No transactions are needed: every write touches one document.
+</TabItem>
+</Tabs>
+
+## Migrations
+
+`wardn.New` creates and upgrades wardn's tables (or indexes) automatically:
+
+- **Safe when many instances start at once:** a database lock serialises them.
+- **Safe to interrupt:** every step can run twice, which matters on MySQL, which can't undo schema changes.
+- **Never downgrades:** a database already upgraded by a newer wardn is refused (`ErrSchemaTooNew`), so an old deployment can't misread it.
+
+If your deploy pipeline runs migrations itself, set `ManualMigrations: true` and call `store.Migrate(ctx)` from the pipeline. `store.SchemaVersion(ctx)` reports the current version.
+
+## What every store guarantees
+
+Each store passes the same 25-check conformance suite against a real server on every change. The suite checks, among other things, that a store:
+
+- **matches IDs exactly.** `O1` never matches `o1`. On MySQL and MariaDB, whose default text comparison ignores case, wardn stores IDs in binary columns.
+- **never returns another user's or another scope's data.**
+- **is safe against injection.** All SQL values are parameters, and MongoDB values are never interpreted as query operators.
+- **keeps the race conditions that matter for security atomic.** Two admins creating the same role name: one wins. Two admins editing the same role version: one wins.
+- **never widens time windows.** Times are stored to the microsecond; starts round later and ends round earlier.
+
+<Aside>Using another database? A store is a small interface, and the same conformance suite tells you when yours is correct. See [Writing a store](/reference/writing-a-store/).</Aside>

@@ -1,0 +1,181 @@
+---
+title: wardn
+description: Simple, opinionated authorization for Go. Define your roles, permissions and tenancy; wardn handles the rest.
+template: splash
+hero:
+  title: Simple, opinionated authorization for Go.
+  tagline: Define your roles, permissions and tenancy in one file. wardn stores them, checks every request, stops privilege escalation and keeps an audit trail, inside your app, with the database you already run. Ten minutes to your first protected route.
+  image:
+    file: ../../assets/logo.svg
+  actions:
+    - text: Quick start
+      link: /getting-started/quick-start/
+      icon: right-arrow
+    - text: How it works
+      link: /concepts/overview/
+      variant: minimal
+    - text: View on GitHub
+      link: https://github.com/MogRex-Limited/wardn
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components';
+
+<div class="landing-section">
+
+## Protect a route in three steps
+
+<p class="landing-lead">Describe your product in one file, start wardn in <code>main</code>, and put <code>Require</code> on your routes. Tables are created for you, typos stop the app at startup, and every denial is explained.</p>
+
+<Tabs>
+<TabItem label="1. wardn.yaml">
+```yaml
+scopes:
+  organisation: {}
+  branch: { parent: organisation }
+
+permissions:
+  customer:view: View customers
+  loan:create:   Create loan applications
+  loan:approve:  Approve loans
+
+roles:
+  org_admin:
+    assignable_at: [organisation]
+    allow: ["*"]
+  teller:
+    assignable_at: [branch]
+    allow: [customer:view, loan:create]
+```
+</TabItem>
+<TabItem label="2. main.go">
+```go
+db, _ := sql.Open("pgx", os.Getenv("DATABASE_URL"))
+
+w := wardn.MustNew(wardn.Config{
+	File:  "wardn.yaml",
+	Store: wardnsql.MustNew(db), // creates its tables on startup
+})
+```
+</TabItem>
+<TabItem label="3. routes">
+```go
+r.Route("/branches/{branchID}", func(r chi.Router) {
+	r.Use(w.ScopeFrom("branch", wardn.PathValue("branchID")))
+	r.With(w.Require("loan:create")).Post("/loans", createLoan)
+	r.With(w.Require("loan:approve")).Post("/loans/{id}/approve", approveLoan)
+})
+```
+</TabItem>
+</Tabs>
+
+</div>
+
+<div class="landing-section">
+
+## Why wardn
+
+<CardGrid>
+	<Card title="Your model, not ours" icon="puzzle">
+		wardn knows nothing about banks, schools or SaaS. Each product declares its own permissions, roles and scope tree: flat, one level, or as deep as it needs.
+	</Card>
+	<Card title="Ten minutes to a protected route" icon="rocket">
+		One YAML file, one constructor, one middleware. No policy language, no extra server. Mistakes fail at startup with a "did you mean …?".
+	</Card>
+	<Card title="Secure by default" icon="approve-check">
+		Default deny. Deny always wins. Any error means "no". Tenants are isolated. Error responses reveal nothing. None of this can be switched off.
+	</Card>
+	<Card title="Custom roles, no escalation" icon="seti:lock">
+		Let admins create roles at runtime. The escalation guard ensures nobody can grant, edit or remove a role with more power than they hold.
+	</Card>
+	<Card title="Works with your database" icon="seti:db">
+		PostgreSQL, MySQL, MariaDB, SQLite and MongoDB, with automatic migrations. Optional Redis caching across instances that never serves stale access.
+	</Card>
+	<Card title="Built to be audited" icon="document">
+		Every check explains itself. Every change is audited before it happens. A threat model, a security review and a test for every threat ship with the code.
+	</Card>
+</CardGrid>
+
+</div>
+
+<div class="landing-section">
+
+## Four ideas, nothing more
+
+<p class="landing-lead">A <strong>permission</strong> is an action your code checks. A <strong>role</strong> is a set of permissions. A <strong>scope</strong> is where a role applies, and roles flow down the scope tree. An <strong>assignment</strong> gives a user a role in a scope, optionally for a limited time.</p>
+
+```text
+organisation:acme                     ada  → org_admin      (everything in Acme)
+ └── region:south
+      └── branch:lagos                bayo → teller         (this branch only)
+                                      tolu → loan_officer   (until Friday)
+```
+
+<LinkCard title="Learn the concepts" description="Permissions, roles, scopes, assignments, and exactly how a decision is made." href="/concepts/overview/" />
+
+</div>
+
+<div class="landing-section">
+
+## Works with
+
+<ul class="works-with">
+	<li>PostgreSQL</li>
+	<li>MySQL</li>
+	<li>MariaDB</li>
+	<li>SQLite</li>
+	<li>MongoDB</li>
+	<li>Redis / Valkey</li>
+	<li>net/http</li>
+	<li>chi</li>
+</ul>
+
+</div>
+
+<div class="landing-section">
+
+## Proven, not promised
+
+<p class="landing-lead">A flaw in an authorization library is a flaw in every product that uses it. So wardn is tested the way attackers think.</p>
+
+<div class="proof-numbers">
+	<div><strong>130,000</strong><span>checks per test run, matched against an independent reference implementation</span></div>
+	<div><strong>46 / 46</strong><span>deliberately broken security rules, every one caught by the tests</span></div>
+	<div><strong>14 million+</strong><span>fuzzed inputs across policies, IDs, URLs and cache contents</span></div>
+	<div><strong>6</strong><span>real database and cache servers in every CI run</span></div>
+</div>
+
+<LinkCard title="How wardn is tested" description="Property tests, fault injection, mutation testing, fuzzing, and an independent security review." href="/security/testing/" />
+
+</div>
+
+<div class="landing-section">
+
+## How it compares
+
+| | **wardn** | Casbin | OpenFGA / SpiceDB | Home-grown |
+|---|---|---|---|---|
+| Runs inside your app (no extra server) | ✓ | ✓ | — | ✓ |
+| No policy language to learn | ✓ | — | — | ✓ |
+| Product-defined tenancy and hierarchy | ✓ | DIY | ✓ | DIY |
+| Admin-created roles with an escalation guard | ✓ | DIY | DIY | rarely |
+| Time-limited access, audit hooks | ✓ | DIY | partly | rarely |
+| Built for relationship graphs at Google scale | — | — | ✓ | — |
+
+<p class="landing-lead">If your core need is relationships between millions of objects, use OpenFGA or SpiceDB. If you need roles and permissions inside a Go product, done right in an afternoon, use wardn.</p>
+
+</div>
+
+<div class="landing-section">
+
+## Get started
+
+<CardGrid>
+	<LinkCard title="Quick start" description="Protect your first route in ten minutes." href="/getting-started/quick-start/" />
+	<LinkCard title="Multi-branch bank recipe" description="Organisations, regions, branches, tellers and temporary approvers." href="/recipes/bank/" />
+	<LinkCard title="Custom roles" description="Build a safe &quot;Create role&quot; screen for your admins." href="/guides/custom-roles/" />
+	<LinkCard title="Security model" description="What wardn guarantees, and what it expects from you." href="/security/overview/" />
+</CardGrid>
+
+</div>
