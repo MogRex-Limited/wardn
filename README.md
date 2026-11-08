@@ -2,7 +2,7 @@
 
 Simple, opinionated authorization for Go. Define your own roles, permissions and scopes; wardn handles the rest.
 
-> **Status: under construction.** wardn is being built to its full design, hardened and independently audited before its first release. There is no usable API yet. Please don't depend on it until v1.0.
+> **Status: under construction.** wardn is being built to its full design, hardened and security-reviewed before its first release. There is no usable API yet. Please don't depend on it until v1.0.
 
 - **Documentation site** (`website/`): run `make docs` and open http://localhost:4321
 - [Design](docs/DESIGN.md): what wardn is, how it works, and the delivery plan

@@ -6,6 +6,8 @@ package wardn
 import (
 	"context"
 	"errors"
+	"go/ast"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -347,5 +349,36 @@ func TestThreat_T25_PolicyChangesAfterNewHaveNoEffect(t *testing.T) {
 	wantCan(t, w, "u", "report:export", branch1, false)
 	if err := w.System().Assign(context.Background(), "u", "evil", Global); err == nil {
 		t.Error("role added after New is assignable")
+	}
+}
+
+// Found in the M9 API review: AssignOption used to be func(*Assignment), so
+// an option could change the role, scope or user after the guard had
+// checked them, and the audit event recorded what was asked, not what was
+// written. Options now reach only a private time window.
+func TestThreat_T03_AssignOptionsCannotChangeWhatIsGuarded(t *testing.T) {
+	arg := reflect.TypeFor[AssignOption]().In(0).Elem()
+	if arg == reflect.TypeFor[Assignment]() || arg.Name() == "" || ast.IsExported(arg.Name()) {
+		t.Fatalf("AssignOption takes *%s; it must take an unexported type, so applications can't write options that change the assignment", arg)
+	}
+
+	// From and Until still set only the window.
+	var events []Event
+	w, _ := newBank(t, func(c *Config) {
+		c.OnChange = func(_ context.Context, e Event) error { events = append(events, e); return nil }
+	})
+	assign(t, w, "mgr", "branch_manager", branch1)
+	ctx := WithUser(context.Background(), "mgr")
+	if err := w.Assign(ctx, "tolu", "teller", branch1, From(t0), Until(t0.Add(time.Hour))); err != nil {
+		t.Fatal(err)
+	}
+	got, err := w.RolesOf(context.Background(), "tolu", branch1)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("RolesOf: %v, %v", got, err)
+	}
+	ev := events[len(events)-1]
+	if a := got[0]; a.Role != "teller" || a.Scope != branch1 || !a.StartsAt.Equal(t0) || !a.ExpiresAt.Equal(t0.Add(time.Hour)) ||
+		ev.Role != a.Role || ev.Scope != a.Scope || !ev.ExpiresAt.Equal(a.ExpiresAt) {
+		t.Fatalf("stored %+v, audited %+v", a, ev)
 	}
 }

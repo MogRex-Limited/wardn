@@ -5,7 +5,7 @@
 | **Date** | 2026-11-08 |
 | **Scope** | The core library, `store/sql` (PostgreSQL, MySQL, MariaDB, SQLite), `store/mongo`, `cache/redis`, the HTTP middleware, the `wardn` CLI |
 | **Result** | 1 high, 4 medium and 6 low findings, plus 1 found by fuzzing. All are fixed and protected by regression tests, except two low-severity items accepted as design decisions (§4). |
-| **For** | Engineering leadership, and the external auditors as their starting point (§5) |
+| **For** | Engineering leadership, and any later reviewer as their starting point (§5) |
 
 ---
 
@@ -17,7 +17,7 @@
 | **Fault injection: store** | Every management operation runs once per store call it makes, with that one call failing. A failed change must report an error and must never leave access that neither the old state nor the intended new state grants. | `fault_test.go` |
 | **Fault injection: cache** | The same, with each cache call failing. Afterwards, cached answers must match the store exactly. | `fault_test.go` |
 | **Fault injection: SQL transactions** | A `database/sql` driver wrapper fails each statement, begin and commit in turn. A custom role must always be entirely old or entirely new. | `tests/integration/fault_test.go` |
-| **Mutation testing** | 46 deliberate breaks of specific security rules. The test suite must fail for every one. | `scripts/mutate.py`, `make mutation` |
+| **Mutation testing** | 50 deliberate breaks of specific security rules. The test suite must fail for every one. | `scripts/mutate.py`, `make mutation` |
 | **Fuzzing** | 8 targets, covering policy parsing, names, `Check` inputs, role names, role specs, pagination cursors, cache contents and HTTP paths. Each ran for 90 seconds (about 14 million executions in total), plus a weekly CI campaign of 5 minutes per target. | `scripts/fuzz.sh`, `make fuzz` |
 | **Property tests** | The engine against an independent reference implementation (about 130,000 checks per run). The escalation guard attacked in 300 random worlds. Two instances sharing a cache, checked for staleness after random changes. | `property_test.go`, `guard_property_test.go`, `cache_test.go` |
 
@@ -79,7 +79,19 @@ The review found no bypass in these areas (details in each section of DESIGN.md)
 
 ---
 
-## 5. Brief for the external auditors
+## 4a. Findings after the review
+
+Found later, fixed the same way: a failing test first, then the fix, and a mutant where a rule can be broken in one line.
+
+| ID | Severity | Finding | Fix | Regression test |
+|---|---|---|---|---|
+| **T27** (M8 usability rehearsal) | Medium | Two tenants reusing a scope ID: linking the second moved the first tenant's scope under the other tenant's administrators. | `Link` never changes an existing parent (`ErrAlreadyLinked`); `Move` does it on purpose. | `TestThreat_T27_ReusedScopeIDCannotCrossTenants` |
+| **A1** (M9 API review) | Medium | `AssignOption` was `func(*Assignment)`, so an option written by the application could change the role, scope or user **after** the escalation guard had checked them: a branch manager's guarded `Assign` of `teller` wrote `super_admin` globally, and the audit event recorded `teller`. Exploiting it needs application code that builds such an option; end users cannot reach it directly. | Options now reach only a private time window, so only `From` and `Until` can exist. | `TestThreat_T03_AssignOptionsCannotChangeWhatIsGuarded` |
+| **A2** (M9 API review) | Low | A `Move` was audited as `scope.linked`, without the old parent. `Event` had no JSON names, and its error marshalled as `{}`. | `EventMoved` with `PreviousParent`; stable snake_case JSON for `Event`, with `Err` as `error`. | `TestMoveIsAuditedWithThePreviousParent`, `TestEventJSONIsStable` |
+
+## 5. Brief for later reviewers
+
+wardn has no external audit (DESIGN.md D16). This brief is for anyone who reviews it later: a new maintainer, a security team adopting it, or an auditor if one is ever engaged.
 
 - **Start here:** docs/DESIGN.md §5 (evaluation rules) and §6 (custom roles and the guard); docs/THREAT_MODEL.md; this document.
 - **Highest-value targets:**

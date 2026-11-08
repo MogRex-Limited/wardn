@@ -2,6 +2,7 @@ package wardn
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -19,36 +20,73 @@ const (
 	EventRoleUpdated EventType = "role.updated"
 	EventRoleDeleted EventType = "role.deleted"
 	EventLinked      EventType = "scope.linked"
+	EventMoved       EventType = "scope.moved"
 )
 
 // Event describes a change to who can do what, for the audit trail
 // (Config.OnChange). Fields that do not apply to a type are zero.
+//
+// Events marshal to JSON with stable snake_case field names, leaving out
+// fields that do not apply; Err is written as its message ("error").
 type Event struct {
-	Type EventType
+	Type EventType `json:"type"`
 	// Actor is the acting user's ID. It is empty when System is true.
-	Actor string
+	Actor string `json:"actor,omitempty"`
 	// System is true for changes made through Warden.System and by the
 	// expiry sweeper, where no user is acting.
-	System bool
-	At     time.Time
+	System bool      `json:"system"`
+	At     time.Time `json:"at,omitzero"`
 
-	User   string // assignments: whose access changed
-	Role   string // assignments and roles: system role name or custom role ID
-	Scope  Scope  // assignments: where; roles: the owner; links: the child
-	Parent Scope  // links: the new parent
+	User   string `json:"user,omitempty"`  // assignments: whose access changed
+	Role   string `json:"role,omitempty"`  // assignments and roles: system role name or custom role ID
+	Scope  Scope  `json:"scope,omitzero"`  // assignments: where; roles: the owner; links and moves: the child
+	Parent Scope  `json:"parent,omitzero"` // links and moves: the new parent
+	// PreviousParent is the parent before a move (EventMoved).
+	PreviousParent Scope `json:"previous_parent,omitzero"`
 
-	StartsAt  time.Time // assignments: the time window
-	ExpiresAt time.Time
+	StartsAt  time.Time `json:"starts_at,omitzero"` // assignments: the time window
+	ExpiresAt time.Time `json:"expires_at,omitzero"`
 
-	Before *CustomRole // role updates and deletions
-	After  *CustomRole // role creations and updates
+	Before *CustomRole `json:"before,omitempty"` // role updates and deletions
+	After  *CustomRole `json:"after,omitempty"`  // role creations and updates
 
 	// Err is set when OnChange is called a second time for the same change
 	// because it failed after OnChange approved it. A failed change may
 	// have been partly applied (for example, a cascade deletion that deleted
 	// the role but not all its assignments); the store is the source of
 	// truth. OnChange's return value is ignored on that call.
-	Err error
+	Err error `json:"-"`
+}
+
+// MarshalJSON writes the event with Err as its message, under "error".
+func (e Event) MarshalJSON() ([]byte, error) {
+	type plain Event // without methods, so this does not recurse
+	out := struct {
+		plain
+		Error string `json:"error,omitempty"`
+	}{plain: plain(e)}
+	if e.Err != nil {
+		out.Error = e.Err.Error()
+	}
+	return json.Marshal(out)
+}
+
+// UnmarshalJSON reads an event written by MarshalJSON. A recorded error
+// comes back as an error with the same message.
+func (e *Event) UnmarshalJSON(data []byte) error {
+	type plain Event
+	var in struct {
+		plain
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(data, &in); err != nil {
+		return err
+	}
+	*e = Event(in.plain)
+	if in.Error != "" {
+		e.Err = errors.New(in.Error)
+	}
+	return nil
 }
 
 // ErrAuditRejected wraps an error returned by Config.OnChange, which stops

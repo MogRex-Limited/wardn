@@ -32,7 +32,7 @@ DB_ENV := WARDN_TEST_POSTGRES_DSN='postgres://postgres:wardn@127.0.0.1:56432/war
           WARDN_TEST_MONGO_URI='mongodb://127.0.0.1:56017' \
           WARDN_TEST_REDIS_ADDR='127.0.0.1:56379'
 
-.PHONY: check test test-modules integration db-up db-down bench bench-all lint fmt vuln deps tidy cover hooks mutation fuzz docs docs-build
+.PHONY: check api test test-modules integration db-up db-down bench bench-all lint fmt vuln deps tidy cover hooks mutation fuzz docs docs-build
 
 ## hooks: install the pre-push hook that runs `make check` (once per clone)
 hooks:
@@ -40,7 +40,11 @@ hooks:
 	@echo "pre-push hook installed: every push now runs make check"
 
 ## check: run every CI gate (run this before opening a pull request)
-check: tidy deps lint test test-modules vuln
+check: tidy deps lint test test-modules vuln api
+
+## api: fail on any change incompatible with the latest v1 release (docs/STABILITY.md); API_BASE=main previews a branch
+api:
+	scripts/apicheck.sh
 
 ## test: run the library's tests with the race detector, in random order
 test:

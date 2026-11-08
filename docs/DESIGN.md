@@ -684,7 +684,7 @@ wardn itself must not become the way in. Since the first commit:
 - **Property-based tests** for invariants (for example, "deny always wins" and "no assignment outside the ancestor chain ever applies")
 - **Mutation testing** to prove the tests catch broken logic
 - Race-detector runs on all concurrent code paths
-- **Internal security review**, then an **independent external audit** before the announcement
+- **Internal security review** (M7) and an **API review** before the freeze (M9). No external audit is commissioned (decision D16).
 
 ---
 
@@ -845,12 +845,12 @@ The security pipeline is built **before any feature code**, so every line of war
 | **M4: HTTP and tooling** | `Require` / `RequireAny`, `ScopeFrom` with `PathValue` (works with chi, no adapter), error handling, `wardntest.AuditRoutes`, `cmd/wardn check` and `gen`, signed release workflow | Every HTTP path tested, including fail-closed behaviour |
 | **M5: Custom roles** | Runtime roles (grants-only) with spoof-resistant names, escalation guard, guarded `Assign`/`Revoke`, introspection APIs (`Roles`, `AssignableRoles`, `Members`, `CustomRole`), audit events (`OnChange`), expiry sweeper, schema v2 | Escalation and isolation test suites pass |
 | **M6: Completeness** | MongoDB store, opt-in cross-request cache (memory, Redis) with version-counter invalidation, cache conformance suite, stable JSON for public types; SQL Server deferred until a product needs it (D12) | Mongo passes `storetest`; Redis passes `cachetest`; no stale answer after random changes across instances |
-| **M7: Hardening** | Adversarial suite, extended fuzzing campaign, mutation testing, internal security review, **independent external audit** | No open high or critical findings |
+| **M7: Hardening** | Adversarial suite, extended fuzzing campaign, mutation testing, internal security review | No open high or critical findings |
 | **M8: Proof and documentation** | Reference applications (multi-branch bank, multi-tenant SaaS, flat app, school system), quick start, concepts, recipes, API reference; fresh-developer usability test; benchmarks | All four reference apps built cleanly on the public API; usability test passes unaided |
-| **M9: v1.0 announcement** | Stability guarantee, release, internal announcement | Becomes the standard for new products |
+| **M9: v1.0 announcement** | API review, stability promise ([STABILITY.md](STABILITY.md)) with an automatic API-compatibility check, release, internal announcement | Becomes the standard for new products |
 | **M10: Open source** | Licence, public repository, CodeQL code scanning (free for public repositories), launch post and talk | Leadership and legal approval |
 
-Versioning: semantic versioning. The API may change during `v0.x`. From `v1.0`, breaking changes require a new major version. The YAML format carries its own `version` field.
+Versioning: semantic versioning. The API may change during `v0.x`. From `v1.0`, breaking changes require a new major version. The YAML format carries its own `version` field. What exactly stays compatible, and how it is checked, is in [STABILITY.md](STABILITY.md).
 
 ---
 
@@ -859,7 +859,7 @@ Versioning: semantic versioning. The API may change during `v0.x`. From `v1.0`, 
 **Before the announcement (quality bar):**
 
 - Every evaluation rule and every threat in the threat model has a test that names it.
-- Zero open high- or critical-severity findings from the internal review and the external audit.
+- Zero open high- or critical-severity findings from the internal security review and every review since.
 - All four reference applications are built using only the public API, with no workarounds.
 - A developer new to wardn protects a route in **under 10 minutes**, using only the documentation.
 
@@ -894,6 +894,7 @@ These numbers form the basis of the internal case and, later, the public story.
 | D13 | Guard scope | The escalation guard is evaluated at the scope where the change happens. An actor's denies at *child* scopes do not limit what they may grant at the parent (security review F10). | Checking every descendant is unbounded. A deny constrains its holder, not what that holder may delegate above it. To restrict someone, put the deny on the roles of the people being restricted. |
 | D14 | Management errors reveal nothing | Without `wardn:roles.manage` at a role's owner, `UpdateRole` and `DeleteRole` answer exactly as for a missing role (`ErrRoleNotFound`, 404). Guarded deletes of missing roles are therefore not silent; `System()` deletes stay idempotent. | Existence, versions and nearby names are information an attacker can use (security review F5). |
 | D15 | Quiet no-op changes; `Link` vs `Move` | Repeating a change that changes nothing (same assignment and window, same parent) is not written or audited. `Link` refuses to re-parent; `Move` re-parents on purpose. | Found by the usability rehearsal: seeding on every start filled the audit trail, and a reused ID could silently move one tenant's scope into another. |
+| D16 | External audit | No external security audit for v1.0: the maintainers decided against one (2026-11-08). | v1.0 rests on the internal security review (docs/SECURITY_REVIEW.md), the API review before the freeze, a `TestThreat_` test for every threat, property tests against a reference implementation, fault injection, fuzzing and mutation testing. The review brief stays in SECURITY_REVIEW.md §5 for any later reviewer. |
 
 ## 18. Open questions
 

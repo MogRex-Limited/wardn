@@ -69,11 +69,16 @@ func counterTenant(root Scope) string {
 	return "v:t:" + cacheKey("tenant", root)
 }
 
+// cacheFormat is part of every cache key. Change it whenever what wardn
+// stores in the cache changes, so releases sharing a cache during a rolling
+// deploy never read each other's entries (docs/STABILITY.md).
+const cacheFormat = 1
+
 // cacheKey derives a fixed-length key from structured parts. Hashing keeps
 // IDs out of the cache (they may be personal data) and makes keys immune to
 // separator injection (threat model T13, T24).
 func cacheKey(kind string, parts ...any) string {
-	b, err := json.Marshal(append([]any{kind}, parts...))
+	b, err := json.Marshal(append([]any{cacheFormat, kind}, parts...))
 	if err != nil {
 		panic(err) // parts are strings, scopes and integers
 	}
@@ -192,7 +197,7 @@ func (w *Warden) countersFor(ctx context.Context, ev Event) ([]string, error) {
 		return counterTenant(tenantRoot(chain)), nil
 	}
 	switch ev.Type {
-	case EventLinked:
+	case EventLinked, EventMoved:
 		// The child moves from its old tenant to the parent's: both change,
 		// and so does every cached parent lookup.
 		oldRoot, err := rootOf(ev.Scope)

@@ -92,7 +92,7 @@ wardn is a Go module: users download source through the Go module proxy, and the
 ### Steps
 
 1. Make sure `main` is green on every check, and the [threat model](THREAT_MODEL.md) is up to date.
-2. Update [CHANGELOG.md](../CHANGELOG.md): move "Unreleased" entries under the new version, and call out security fixes and breaking changes.
+2. Update [CHANGELOG.md](../CHANGELOG.md): move "Unreleased" entries under the new version, and call out security fixes, deprecations and database schema changes. From v1.0.0 there are no breaking changes ([STABILITY.md](STABILITY.md)).
 3. Create a **signed, annotated** tag on the merge commit:
    ```bash
    git tag -s v0.1.0 -m "wardn v0.1.0"
@@ -136,6 +136,6 @@ Until the open-source milestone, host it **internally only**: build the containe
 
 ### Versioning
 
-- Semantic versioning. `v0.x` may change the API; from `v1.0.0`, breaking changes need a new major version.
+- Semantic versioning. `v0.x` may change the API; from `v1.0.0`, breaking changes need a new major version. [STABILITY.md](STABILITY.md) defines what that covers. `make api` (in `make check` and CI) compares every change with each module's latest v1 tag.
 - A security fix is released as a patch version as soon as it is ready, following [SECURITY.md](../SECURITY.md).
 - If a released version is found to be dangerous, add a `retract` directive to `go.mod` in the next release so `go get` warns users away from it.

@@ -45,17 +45,21 @@ func actorFrom(ctx context.Context) (actor, error) {
 	return actor{id: id, guarded: true}, nil
 }
 
-// AssignOption configures an assignment.
-type AssignOption func(*Assignment)
+// AssignOption limits an assignment in time: From or Until. Options can
+// set only the time window, never the user, role or scope that the guard
+// and the audit trail see.
+type AssignOption func(*assignWindow)
+
+type assignWindow struct{ startsAt, expiresAt time.Time }
 
 // From makes an assignment apply only from t onwards.
 func From(t time.Time) AssignOption {
-	return func(a *Assignment) { a.StartsAt = t }
+	return func(win *assignWindow) { win.startsAt = t }
 }
 
 // Until makes an assignment stop applying at t.
 func Until(t time.Time) AssignOption {
-	return func(a *Assignment) { a.ExpiresAt = t }
+	return func(win *assignWindow) { win.expiresAt = t }
 }
 
 // ---------------------------------------------------------------------------
@@ -286,10 +290,11 @@ func (w *Warden) assign(ctx context.Context, a actor, user, role string, scope S
 	if err := w.checkAssignable(ctx, r, scope); err != nil {
 		return err
 	}
-	as := Assignment{User: user, Role: role, Scope: scope}
+	var win assignWindow
 	for _, opt := range opts {
-		opt(&as)
+		opt(&win)
 	}
+	as := Assignment{User: user, Role: role, Scope: scope, StartsAt: win.startsAt, ExpiresAt: win.expiresAt}
 	for _, tm := range []time.Time{as.StartsAt, as.ExpiresAt} {
 		if !tm.IsZero() && (tm.Year() < 1 || tm.Year() > 9999) {
 			return invalidf("time %s is outside years 1 to 9999", tm.Format(time.RFC3339))
@@ -616,8 +621,9 @@ func (w *Warden) Link(ctx context.Context, child, parent Scope) error {
 
 // Move changes child's parent, for example when a branch moves to another
 // region. Roles inherited from the old parent stop applying, and those of
-// the new parent start, on the next check. Moving a scope that has no
-// parent yet links it. Every move is audited.
+// the new parent start, on the next check. Every move is audited as
+// EventMoved, with the old parent. Moving a scope that has no parent yet
+// links it (EventLinked); moving it to the parent it has does nothing.
 func (w *Warden) Move(ctx context.Context, child, newParent Scope) error {
 	return w.link(ctx, child, newParent, true)
 }
@@ -655,6 +661,9 @@ func (w *Warden) link(ctx context.Context, child, parent Scope, move bool) error
 			ErrAlreadyLinked, ErrInvalidLink, child, current, current.ID, child.ID)
 	}
 	ev := Event{Type: EventLinked, System: true, Scope: child, Parent: parent}
+	if linked { // only Move gets here with a parent: record where it came from
+		ev.Type, ev.PreviousParent = EventMoved, current
+	}
 	if id, ok := UserOf(ctx); ok {
 		ev.Actor, ev.System = id, false
 	}

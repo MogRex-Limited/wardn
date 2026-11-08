@@ -141,5 +141,5 @@ wardn doesn't defend against these; the product and its infrastructure must.
 ## 7. Review schedule
 
 - Updated whenever a milestone adds or changes an attack surface.
-- Fully re-reviewed in M7 (Hardening), and handed to the external auditors as their starting point.
+- Fully re-reviewed in M7 (Hardening), and again in the M9 API review. There is no external audit (DESIGN.md D16).
 - Re-reviewed for every minor release after v1.0.

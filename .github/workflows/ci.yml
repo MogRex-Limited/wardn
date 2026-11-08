@@ -90,6 +90,22 @@ jobs:
       - name: Known vulnerabilities (govulncheck)
         run: make vuln
 
+  api:
+    name: API compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # every release tag, to compare against (docs/STABILITY.md)
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.x"
+          cache: false
+      - name: No incompatible change to the public API since the latest v1 release
+        run: make api
+
   integration:
     name: Integration (real databases)
     runs-on: ubuntu-latest
