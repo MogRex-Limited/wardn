@@ -4,7 +4,7 @@ go 1.26.0
 
 toolchain go1.27.3
 
-require github.com/MogRex-Limited/wardn v1.0.0
+require github.com/MogRex-Limited/wardn v1.1.0
 
 require (
 	github.com/klauspost/compress v1.20.3 // indirect
