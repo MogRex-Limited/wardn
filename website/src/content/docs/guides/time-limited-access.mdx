@@ -56,4 +56,8 @@ clock.Advance(48 * time.Hour)
 // ... check that access has ended
 ```
 
-<Aside>Expiry is evaluated against the clock of the server running the check. Keep your servers' clocks synchronised with NTP.</Aside>
+## Server clocks
+
+Each server checks time windows against its own clock. Nothing it shares with other servers (the database or the cache) carries a time or a decision. So a server whose clock is off is wrong by exactly its skew and no longer. If a clock is 2 seconds slow, access starts 2 seconds late and ends 2 seconds late on that server, and on time everywhere else.
+
+<Aside type="caution">Keep every server's clock synchronised with NTP (most cloud platforms do this by default). Skew is the only way access can outlive its window. Leave a margin if a window must be exact to the second.</Aside>

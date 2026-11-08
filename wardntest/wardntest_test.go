@@ -143,7 +143,9 @@ func TestFailures(t *testing.T) {
 	})
 }
 
-func TestAuditRoutes(t *testing.T) {
+// TestThreat_T17_AuditRoutesFindsUnprotectedRoute: a forgotten Require is
+// reported, and so is an audit whose probe user was never authenticated.
+func TestThreat_T17_AuditRoutesFindsUnprotectedRoute(t *testing.T) {
 	w := wardntest.New(t, policy)
 	ok := http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) { rw.WriteHeader(http.StatusOK) })
 	mux := http.NewServeMux()

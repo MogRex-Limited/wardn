@@ -104,6 +104,37 @@ func TestThreat_T09_RevokedAccessStopsImmediately(t *testing.T) {
 	wantCan(t, w, "u", "loan:create", branch1, false)
 }
 
+// Each instance decides by its own clock, and nothing it shares with other
+// instances (store or cache) carries a decision or a time: an instance
+// whose clock is off is wrong by at most its skew, never longer.
+func TestThreat_T19_ClockSkewIsBoundedBySkew(t *testing.T) {
+	const skew = 2 * time.Second
+	store, cache := NewMemoryStore(), NewMemoryCache()
+	shared := func(c *Config) { c.Store, c.Cache = store, cache }
+	exact, exactClock := newBank(t, shared)
+	slow, slowClock := newBank(t, shared) // same store and cache, separate clock
+	slowClock.Advance(-skew)
+
+	start, end := t0.Add(time.Hour), t0.Add(2*time.Hour)
+	assign(t, exact, "temp", "loan_officer", branch1, From(start), Until(end))
+	at := func(tm time.Time) { // move both clocks; slow stays skew behind
+		exactClock.Advance(tm.Sub(exactClock.Now()))
+		slowClock.Advance(tm.Add(-skew).Sub(slowClock.Now()))
+	}
+
+	at(start)
+	wantCan(t, exact, "temp", "loan:approve", branch1, true)
+	wantCan(t, slow, "temp", "loan:approve", branch1, false) // starts late...
+	at(start.Add(skew))
+	wantCan(t, slow, "temp", "loan:approve", branch1, true) // ...by exactly the skew
+
+	at(end) // both instances have the assignment cached by now
+	wantCan(t, exact, "temp", "loan:approve", branch1, false)
+	wantCan(t, slow, "temp", "loan:approve", branch1, true) // ends late...
+	at(end.Add(skew))
+	wantCan(t, slow, "temp", "loan:approve", branch1, false) // ...by exactly the skew
+}
+
 func TestThreat_T09_ExpiredAccessStopsWithoutCleanup(t *testing.T) {
 	w, clock := newBank(t)
 	assign(t, w, "temp", "loan_officer", branch1, Until(t0.Add(time.Hour)))
