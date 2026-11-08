@@ -19,7 +19,7 @@ docker build -t wardn-docs .
 docker run --rm -p 3002:3002 wardn-docs
 ```
 
-`dist/` is also a plain static site that any web server can host. It becomes public with the open-source milestone (M10).
+`dist/` is also a plain static site that any web server can host. On a host whose Node.js is too old for Astro and can't be changed, use `sh website/build.sh` as the build command: it downloads a pinned, checksum-verified Node.js for the build. It becomes public with the open-source milestone (M10).
 
 ## Writing guidelines
 
