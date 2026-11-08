@@ -6,7 +6,7 @@ import starlightLinksValidator from 'starlight-links-validator';
 const repo = 'https://github.com/MogRex-Limited/wardn';
 
 export default defineConfig({
-	site: 'https://wardn.internal',
+	site: 'https://wardn.oprexcloud.com',
 	telemetry: false,
 	integrations: [
 		starlight({
