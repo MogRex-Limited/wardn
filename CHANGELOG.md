@@ -6,6 +6,28 @@ All notable changes to wardn are documented here. The format follows
 
 ## [Unreleased]
 
+Planned as v1.2.0, with `store/mongo`, `store/pgx` and `cache/redis` v1.2.0
+(lockstep). Every change is an addition.
+
+### Changed
+
+- **wardn is open source,** under the Apache License 2.0. The repository is
+  public and the module is fetched through the public Go module proxy: no
+  `GOPRIVATE` setting or credentials are needed any more. CodeQL code
+  scanning runs on every change.
+
+### Added
+
+- **`store/pgx`** (package `wardnpgx`), a new module: a PostgreSQL store for
+  applications built on pgx. It takes a `*pgxpool.Pool` (or `*pgx.Conn`) and,
+  with `Store.WithTx`, the application's own `pgx.Tx`, so access changes
+  commit with the application's writes and existing pgx/sqlc transaction
+  helpers just pass their transaction through. wardn's writes run as pgx
+  savepoints. It creates exactly the same tables as `store/sql` on
+  PostgreSQL (tested by comparing the two schemas and sharing data between
+  them), so a database can switch stores, or serve both, with no migration.
+  It passes the store conformance suite and the transaction tests.
+
 ## [1.1.0] - 2026-11-08
 
 Released together with `store/mongo` v1.1.0 and `cache/redis` v1.1.0. Every

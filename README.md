@@ -157,6 +157,7 @@ Different tools for different jobs. wardn is built for roles and tenancy inside 
 | **MySQL** | 8.0+ | `github.com/MogRex-Limited/wardn/store/sql` |
 | **MariaDB** | 10.6+ | `github.com/MogRex-Limited/wardn/store/sql` |
 | **SQLite** | 3.24+ | `github.com/MogRex-Limited/wardn/store/sql` |
+| **PostgreSQL through pgx** | 13+ | `github.com/MogRex-Limited/wardn/store/pgx` (same tables as `store/sql`) |
 | **MongoDB** | 6.0+ | `github.com/MogRex-Limited/wardn/store/mongo` |
 | **Redis / Valkey** | shared cache (optional) | `github.com/MogRex-Limited/wardn/cache/redis` |
 | **Routers** | net/http, chi, and anything built on `http.Handler` | core |

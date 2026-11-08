@@ -21,7 +21,7 @@ Some protections in the [threat model](THREAT_MODEL.md) (S02–S05) cannot be en
   - [ ] Require approval of the most recent push (no self-approving after a reviewer's approval)
   - [ ] Require conversation resolution before merging
 - [ ] Require status checks to pass, with branches up to date:
-  - `Test (Go 1.26.x)`, `Test (Go 1.27.x)`, `Lint (.)`, `Lint (store/mongo)`, `Lint (cache/redis)`, `Lint (tests/integration)`, `Supply chain`, `Integration (real databases)`
+  - `Test (Go 1.26.x)`, `Test (Go 1.27.x)`, `Lint (.)`, `Lint (store/mongo)`, `Lint (store/pgx)`, `Lint (cache/redis)`, `Lint (tests/integration)`, `Supply chain`, `Integration (real databases)`
   - add `Analyze (Go)` when CodeQL is restored (see "CodeQL" below)
 - [ ] Require signed commits
 - [ ] Require linear history
@@ -125,16 +125,17 @@ Until the open-source milestone, host it **internally only**: build the containe
 
 ### Sub-modules
 
-`store/mongo` and `cache/redis` are separate Go modules, so their drivers reach only the teams that use them. They are released **in lockstep with the core**: every release tags all three, at the same version, on the same commit.
+`store/mongo`, `store/pgx` and `cache/redis` are separate Go modules, so their drivers reach only the teams that use them. They are released **in lockstep with the core**: every release tags all four, at the same version, on the same commit. (`store/pgx` joined in v1.2.0: its first tag is `store/pgx/v1.2.0`.)
 
 Each sub-module's `go.mod` keeps a `replace` line pointing at the core in this repository, so CI always tests the sub-modules against the current core. Go ignores `replace` for downstream users, who get the core version in the `require` line instead. That line is therefore what users actually build against, and it must name the version being released. In the release pull request:
 
-1. In `store/mongo/go.mod` and `cache/redis/go.mod`, set `require github.com/MogRex-Limited/wardn` to the new version, and run `go mod tidy` in each. This works before the tag exists, because of the `replace` line.
+1. In `store/mongo/go.mod`, `store/pgx/go.mod` and `cache/redis/go.mod`, set `require github.com/MogRex-Limited/wardn` to the new version, and run `go mod tidy` in each. This works before the tag exists, because of the `replace` line.
 2. After merging, tag the core (`v1.2.0`, step 3 above), then each sub-module with its path, on the same commit:
    ```bash
    git tag -s store/mongo/v1.2.0 -m "wardn store/mongo v1.2.0"
+   git tag -s store/pgx/v1.2.0 -m "wardn store/pgx v1.2.0"
    git tag -s cache/redis/v1.2.0 -m "wardn cache/redis v1.2.0"
-   git push origin store/mongo/v1.2.0 cache/redis/v1.2.0
+   git push origin store/mongo/v1.2.0 store/pgx/v1.2.0 cache/redis/v1.2.0
    ```
 3. Check that `go get github.com/MogRex-Limited/wardn/store/mongo@v1.2.0` works in a fresh module.
 

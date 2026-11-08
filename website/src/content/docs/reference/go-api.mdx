@@ -60,7 +60,7 @@ The full reference is generated from the code with `go doc github.com/MogRex-Lim
 
 | | |
 |---|---|
-| `store.WithTx(ctx, tx) context.Context` | SQL store: read and write through your `*sql.Tx`. |
+| `store.WithTx(ctx, tx) context.Context` | Read and write through your transaction: a `*sql.Tx` (SQL store) or a `pgx.Tx` (pgx store, v1.2). |
 | `w.Transaction(ctx) (context.Context, func(context.Context) error)` | Changes commit with your transaction; call the returned function after it ends. |
 | `wardn.TxStore` | Implemented by stores that support this (`InTx(ctx) bool`). |
 | `wardn.ErrNoTransaction` | A change had one of the two without the other. |

@@ -43,9 +43,11 @@ If you change the table prefix with `WithTablePrefix`, use that prefix here.
 
 To change access together with your own rows, pass the tenant transaction to wardn ([changes in your own transaction](/guides/transactions/)):
 
+With the pgx store, `tx` is your `pgx.Tx`; with the SQL store, a `*sql.Tx`:
+
 ```go
 wctx, ended := w.Transaction(ctx)
-err := database.InTenantTx(wctx, orgID, func(tx *sql.Tx) error {
+err := database.InTenantTx(wctx, pool, orgID, func(tx pgx.Tx) error {
 	ctx := store.WithTx(wctx, tx)
 	// your writes on tx, then:
 	return w.Assign(ctx, userID, "agent", product)
