@@ -16,7 +16,7 @@ While wardn is internal, host the site privately: for example on an internal ser
 
 ```bash
 docker build -t wardn-docs .
-docker run --rm -p 8080:8080 wardn-docs
+docker run --rm -p 3002:3002 wardn-docs
 ```
 
 `dist/` is also a plain static site that any web server can host. It becomes public with the open-source milestone (M10).
