@@ -161,7 +161,7 @@ Different tools for different jobs. wardn is built for roles and tenancy inside 
 | **Redis / Valkey** | shared cache (optional) | `github.com/MogRex-Limited/wardn/cache/redis` |
 | **Routers** | net/http, chi, and anything built on `http.Handler` | core |
 
-The core module depends only on the standard library and YAML. The SQL store uses `database/sql` with the driver you already have, and MongoDB and Redis support live in their own modules, so your service pulls in only what it uses.
+The core module depends only on the standard library and YAML. The SQL store uses `database/sql` with the driver you already have, and pgx, MongoDB and Redis support live in their own modules, so your service pulls in only what it uses.
 
 ## Examples
 
@@ -199,7 +199,7 @@ A flaw in an authorization library is a flaw in every product that uses it, so w
 - Fault injection on every store, cache and SQL write path. Any failure must deny, never allow.
 - 58 deliberately broken security rules, every one caught by the test suite (`make mutation`), plus 8 fuzz targets. Both run every week.
 - An [internal security review](docs/SECURITY_REVIEW.md) and an API review before v1.0. Every finding is fixed and has a regression test. There has been no external audit ([decision D16](docs/DESIGN.md)).
-- Signed releases. The CLI binaries are reproducible, with checksums and Sigstore build provenance.
+- Signed release tags. Release binaries of the CLI are built reproducibly and ship with checksums and Sigstore build provenance.
 
 **Found a vulnerability?** Please don't open an issue. Follow the [security policy](SECURITY.md) to report it privately.
 

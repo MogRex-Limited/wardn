@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Current for v1.0.0; re-reviewed for every minor release |
+| **Status** | Current for v1.1; re-reviewed for every minor release |
 | **Date** | 2026-11-07 |
 | **Companion to** | [DESIGN.md](DESIGN.md) |
 
@@ -90,10 +90,10 @@ wardn validates all of these:
 | **T22** | **Concurrent edits** cause lost updates to a role, re-adding a permission someone just removed. | A3 | Optimistic concurrency on role updates (`ErrConflict`). |
 | **T23** | **Resource exhaustion through huge inputs:** a giant policy file, millions of roles in a spec, or an unbounded `Members` page. | A3, A7 | Size limits on policy files, role specs and IDs; `Members` is paginated with a maximum page size. The YAML parser is fuzzed, and its alias-expansion limits are tested. |
 | **T24** | **Cache poisoning or key collision** (cache opt-in only). | A2, A3 | Hashed, structured cache keys (T13). Every value is sealed with HMAC-SHA256 over key and value (`Config.CacheSecret`, required for shared caches), so a writable cache can't forge or move entries. Unverifiable values are misses. Version counters aren't sealed: Redis must not evict them (`noeviction` or `volatile-*`), and a lost counter revives old genuine entries for at most one TTL. The server must still be private, with authentication and TLS. |
+| **T25** | **Race conditions** in concurrent checks and changes produce inconsistent decisions. | A2 | Immutable compiled policy; per-request memo scoped to one request; every package tested with `-race`. |
 | **T26** | **Query-operator injection (MongoDB):** an ID such as `{"$ne": ""}` matches every document. | A1, A2 | The MongoDB store only ever uses user-supplied values as typed string values in filters, never as query documents or field names; tested with operator-like IDs. |
 | **T27** | **Reused scope IDs across tenants:** two tenants name a scope the same (`department:cardiology`); linking the second moves the first under the other tenant's administrators. | A3, A7 | `Link` never changes an existing parent: a different parent fails with `ErrAlreadyLinked`; moves require the explicit `Move`. Docs require IDs unique per type (primary keys or composite IDs) and show the composite-ID pattern. Found by the M8 usability rehearsal. |
-| **T28** | **Uncommitted access escapes the application's transaction** (v1.1): wardn reads inside an application transaction, sees an uncommitted grant, and caches it, so other requests use access that is later rolled back; or the cache keeps the old state after the commit. | A2, A4 | Inside an application transaction wardn neither reads nor fills the shared cache or the request memo. Counters are bumped before the write and again when the application calls the function `Warden.Transaction` returned, after the commit. A change with only one of `Store.WithTx` and `Warden.Transaction` fails with `ErrNoTransaction`, so a forgotten call can't silently leave the cache stale. The SQL store writes in savepoints, so a failed write never aborts the application's transaction. |
-| **T25** | **Race conditions** in concurrent checks and changes produce inconsistent decisions. | A2 | Immutable compiled policy; per-request memo scoped to one request; every package tested with `-race`. |
+| **T28** | **Uncommitted access escapes the application's transaction** (v1.1): wardn reads inside an application transaction, sees an uncommitted grant, and caches it, so other requests use access that is later rolled back; or the cache keeps the old state after the commit. | A2, A4 | Inside an application transaction wardn neither reads nor fills the shared cache or the request memo. Counters are bumped before the write and again when the application calls the function `Warden.Transaction` returned, after the commit. A change with only one of `Store.WithTx` and `Warden.Transaction` fails with `ErrNoTransaction`, so a forgotten call can't silently leave the cache stale. `Store.RunInTx` (v1.2) makes both calls and ends the transaction after the commit, even on a panic. The SQL store writes in savepoints, so a failed write never aborts the application's transaction. |
 
 ---
 

@@ -1,0 +1,95 @@
+---
+// A discussion thread for the current page, from GitHub Discussions through
+// giscus. Each page gets its own thread, created on the first comment.
+// Readers sign in with GitHub to post; reading needs no account.
+import { discussion, discussionLinks } from '../discussion.config';
+---
+
+<section class="discussion" aria-labelledby="discussion-title">
+	<h2 id="discussion-title">Questions about this page?</h2>
+	<p>
+		Ask below, point out something wrong or unclear, or suggest an improvement. Reading needs no account; to post, sign in with GitHub.
+	</p>
+	<div class="discussion-actions not-content">
+		<a class="discussion-primary" href="/community/">Ask the community</a>
+		<a href={discussionLinks.newQuestion} target="_blank" rel="noopener" class="discussion-secondary">Post a new question on GitHub</a>
+	</div>
+	<div class="giscus"></div>
+	<script
+		is:inline
+		src={discussion.script}
+		data-repo={discussion.repo}
+		data-repo-id={discussion.repoId}
+		data-category={discussion.category}
+		data-category-id={discussion.categoryId}
+		data-mapping="pathname"
+		data-strict="1"
+		data-reactions-enabled="1"
+		data-emit-metadata="0"
+		data-input-position="top"
+		data-theme={'preferred_color_scheme'}
+		data-lang="en"
+		data-loading="lazy"
+		crossorigin="anonymous"
+		async></script>
+</section>
+
+<script is:inline>
+	// Follow Starlight's theme switch (data-theme on <html>).
+	(() => {
+		const theme = () => (document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
+		const send = () => {
+			const frame = document.querySelector('iframe.giscus-frame');
+			frame?.contentWindow?.postMessage({ giscus: { setConfig: { theme: theme() } } }, 'https://giscus.app');
+		};
+		const first = document.querySelector('.discussion script[data-repo]');
+		first?.setAttribute('data-theme', theme());
+		new MutationObserver(send).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+		window.addEventListener('message', (e) => {
+			if (e.origin === 'https://giscus.app' && e.data?.giscus) send();
+		});
+	})();
+</script>
+
+<style>
+	.discussion {
+		margin-top: 3rem;
+		padding-top: 1.5rem;
+		border-top: 1px solid var(--sl-color-hairline);
+	}
+	.discussion h2 {
+		font-size: var(--sl-text-h4);
+	}
+	.discussion {
+		padding: 1.5rem;
+		border: 1px solid var(--sl-color-accent);
+		border-radius: 0.75rem;
+		background: var(--sl-color-accent-low);
+	}
+	.discussion p {
+		color: var(--sl-color-gray-2);
+		font-size: var(--sl-text-sm);
+	}
+	.discussion-actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.75rem 1.25rem;
+		margin-block: 1rem 1.5rem;
+		font-size: var(--sl-text-sm);
+		font-weight: 600;
+	}
+	.discussion-primary {
+		padding: 0.45rem 1rem;
+		border-radius: 999px;
+		background: var(--sl-color-accent);
+		color: var(--sl-color-black);
+		text-decoration: none;
+	}
+	.discussion-secondary {
+		color: var(--sl-color-accent-high);
+	}
+	:global(:root[data-theme='light']) .discussion-primary {
+		color: var(--sl-color-white);
+	}
+</style>

@@ -331,3 +331,83 @@ func TestCheckEach(t *testing.T) {
 		}
 	}
 }
+
+func TestRunInTx(t *testing.T) {
+	s := newStore(t)
+	w := newWarden(t, s)
+	table := appTable(t, s)
+	ctx := context.Background()
+	org, product := wardn.NewScope("organisation", "acme"), wardn.NewScope("product", "helpdesk")
+	if err := w.Link(ctx, product, org); err != nil {
+		t.Fatal(err)
+	}
+	addMember := func(ctx context.Context, tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, "INSERT INTO "+table+" (user_id) VALUES ($1)", "kemi"); err != nil {
+			return err
+		}
+		return w.System().Assign(ctx, "kemi", "agent", product)
+	}
+	w.Can(ctx, "kemi", "ticket:reply", product) // cache "no access"
+
+	// fn fails: everything rolls back.
+	err := s.RunInTx(ctx, w, pgx.TxOptions{}, func(ctx context.Context, tx pgx.Tx) error {
+		if err := addMember(ctx, tx); err != nil {
+			return err
+		}
+		return errRollback
+	})
+	if !errors.Is(err, errRollback) {
+		t.Fatalf("fn's error: %v", err)
+	}
+	if count(t, table) != 0 || w.Can(ctx, "kemi", "ticket:reply", product) {
+		t.Fatal("a failed fn left the row or the access behind")
+	}
+
+	// fn panics: rolls back, and the panic reaches the caller.
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("the panic was swallowed")
+			}
+		}()
+		_ = s.RunInTx(ctx, w, pgx.TxOptions{}, func(ctx context.Context, tx pgx.Tx) error {
+			if err := addMember(ctx, tx); err != nil {
+				return err
+			}
+			panic("boom")
+		})
+	}()
+	if count(t, table) != 0 || w.Can(ctx, "kemi", "ticket:reply", product) {
+		t.Fatal("a panicking fn left the row or the access behind")
+	}
+
+	// fn succeeds, with options: commits, and the cache follows.
+	opts := pgx.TxOptions{IsoLevel: pgx.Serializable}
+	err = s.RunInTx(ctx, w, opts, func(txCtx context.Context, tx pgx.Tx) error {
+		if err := addMember(txCtx, tx); err != nil {
+			return err
+		}
+		// Outside the transaction: caches "no access" until RunInTx ends
+		// wardn's transaction after the commit.
+		if w.Can(ctx, "kemi", "ticket:reply", product) {
+			t.Error("an uncommitted assignment is visible outside the transaction")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count(t, table) != 1 {
+		t.Fatal("the commit lost the application's row")
+	}
+	if !w.Can(ctx, "kemi", "ticket:reply", product) {
+		t.Fatal("committed access is not visible: the cache kept the old state")
+	}
+
+	if err := s.RunInTx(ctx, nil, pgx.TxOptions{}, addMember); err == nil {
+		t.Error("a nil Warden accepted")
+	}
+	if err := s.RunInTx(ctx, w, pgx.TxOptions{}, nil); err == nil {
+		t.Error("a nil function accepted")
+	}
+}

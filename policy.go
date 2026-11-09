@@ -310,7 +310,7 @@ func compilePermissions(p *Policy, cp *compiledPolicy, is *issues) {
 			is.add(path, "wildcards are only allowed in roles; declare concrete permissions here")
 			continue
 		case !validPermission(name):
-			is.add(path, "invalid permission %q: use resource:action, e.g. loan:approve (lowercase letters, digits, '_' and '.', max %d)", name, maxPermissionLen)
+			is.add(path, "invalid permission %q: %s (permissions are resource:action, e.g. loan:approve)", name, permissionProblem(name))
 			continue
 		case strings.TrimSpace(desc) == "":
 			is.add(path, "add a description; admin screens show it to people choosing permissions")

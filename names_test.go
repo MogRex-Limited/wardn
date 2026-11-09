@@ -169,3 +169,34 @@ func FuzzNames(f *testing.F) {
 		_ = suggest(s, []string{"loan:approve", "customer:view"})
 	})
 }
+
+func TestPermissionProblem(t *testing.T) {
+	long := "a:" + strings.Repeat("b", maxPermissionLen)
+	for name, want := range map[string]string{
+		"loan:approve":      "",
+		"approve":           "no ':' between the resource and the action",
+		"organization.read": `did you mean "organization:read"?`,
+		"Loan:View":         `did you mean "loan:view"?`,
+		"loan:approve-own":  `did you mean "loan:approve_own"?`,
+		"Loan:approve-own":  "capital letters", // the lowercase form is still invalid: no suggestion
+		"loan::x":           "empty part",
+		":loan":             "empty part",
+		"loan:1x":           `in "1x"`,
+		"loan:a..b":         `in "a..b"`,
+		long:                "longer than",
+	} {
+		got := permissionProblem(name)
+		if want == "" {
+			if got != "" {
+				t.Errorf("%q is valid, but: %s", name, got)
+			}
+			continue
+		}
+		if !strings.Contains(got, want) {
+			t.Errorf("permissionProblem(%q) = %q, want it to contain %q", name, got, want)
+		}
+		if strings.Contains(got, "did you mean") && !strings.Contains(want, "did you mean") {
+			t.Errorf("permissionProblem(%q) suggests a name: %q", name, got)
+		}
+	}
+}

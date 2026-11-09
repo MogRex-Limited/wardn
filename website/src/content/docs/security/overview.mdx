@@ -45,7 +45,7 @@ wardn decides who can do what in every product that uses it. A flaw in wardn wou
 wardn itself must not become the way in:
 
 - **Minimal dependencies.** The core uses the Go standard library and one YAML parser. Every dependency is on a reviewed allowlist enforced in CI.
-- **Security gates on every change:** `govulncheck`, `gosec`, `staticcheck`, the race detector and module verification.
+- **Security gates on every change:** `govulncheck`, `gosec`, `staticcheck`, CodeQL, the race detector and module verification.
 - **Pinned CI.** Every GitHub Action is pinned to a commit, with read-only tokens.
 - **Verifiable releases.** Tags are signed, and binaries ship with Sigstore build provenance.
 

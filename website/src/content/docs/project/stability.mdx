@@ -9,7 +9,7 @@ From v1.0.0, upgrading wardn within v1 should be safe and boring: `go get -u`, r
 
 ## What stays compatible
 
-- **Your code compiles.** This covers the Go API of `wardn`, `wardntest`, `storetest`, `cachetest`, `wardnsql`, `wardnmongo` and `wardnredis`. Every change is compared automatically with the latest v1 release.
+- **Your code compiles.** This covers the Go API of `wardn`, `wardntest`, `storetest`, `cachetest`, `wardnsql`, `wardnmongo`, `wardnpgx` (from v1.2.0) and `wardnredis`. Every change is compared automatically with the latest v1 release.
 - **Decisions don't change.** The [evaluation rules](/concepts/evaluation/) are fixed. With the same policy and assignments, an allowed check stays allowed, and a denied one stays denied.
 - **Your policy file keeps loading**, with the same meaning. New optional keys may appear. A file that uses them needs the release that added them.
 - **Names stored elsewhere stay the same.** This covers JSON field names, [audit event types](/guides/audit/), the built-in permissions `wardn:roles.assign` and `wardn:roles.manage`, the [sentinel errors and their HTTP status codes](/reference/errors/), and the default error responses.

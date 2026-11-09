@@ -40,7 +40,7 @@ roles:
 - **`deny`** lists what the role takes away. A deny from *any* of a user's roles beats an allow from *every* other role.
 - **`assignable_at`** limits which scope types the role may be assigned at: `teller` only at branches, `super_admin` only at `global`. If it's omitted, the role can be assigned anywhere.
 
-Role names use lowercase letters, digits and `_`.
+Role names use lowercase letters, digits and `_`, start with a letter, and are at most 64 characters.
 
 ## Custom roles
 

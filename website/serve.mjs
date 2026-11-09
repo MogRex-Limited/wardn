@@ -45,7 +45,7 @@ const security = {
 	"X-Frame-Options": "DENY",
 	"Referrer-Policy": "no-referrer",
 	"Content-Security-Policy":
-		"default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; frame-ancestors 'none'",
+		"default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://giscus.app; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://giscus.app; frame-src https://giscus.app; frame-ancestors 'none'",
 };
 
 // file returns the path of a regular file inside root, or null.

@@ -57,6 +57,8 @@ if endErr := ended(ctx); endErr != nil { // after InTenantTx has committed
 }
 ```
 
+If you don't have such a helper, `store.RunInTx` works too: make the tenant setting the first statement in your function, for example `tx.Exec(ctx, "SELECT set_config('app.organization_id', $1, true)", orgID)`.
+
 wardn's queries run with whatever the transaction has set, including `SET LOCAL ROLE` and the tenant setting. That's harmless for wardn's own tables, and it is exactly what your `ParentOf` needs (below).
 
 ## 4. Make `ParentOf` see the parent, or store the links
@@ -86,8 +88,8 @@ Test with the real role. A superuser, or the owner of a table without `FORCE ROW
 ## Checklist
 
 - [ ] wardn's tables have no RLS, and are exempted by name in any schema test.
-- [ ] The app role has `SELECT, INSERT, UPDATE, DELETE` on wardn's tables, and nothing more.
+- [ ] The app role has `SELECT, INSERT, UPDATE, DELETE` on wardn's tables and `SELECT` on its migrations table, and nothing more.
 - [ ] Migrations run as the owner, with `ManualMigrations: true` in the application.
-- [ ] Changes to access that go with your own writes use `store.WithTx` and `w.Transaction`.
+- [ ] Changes to access that go with your own writes use `store.RunInTx`, or `store.WithTx` and `w.Transaction`.
 - [ ] Parents are stored with `Link`, or `ParentOf` can read them outside a tenant transaction.
 - [ ] Integration tests connect as the restricted role.

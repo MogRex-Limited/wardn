@@ -7,7 +7,7 @@ import { Steps, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components'
 
 This guide adds wardn to an existing Go web service that uses chi and PostgreSQL. By the end, a route is protected, your first administrator is set up, and you have a test proving it works.
 
-<Aside>wardn needs Go 1.26 or newer. While the repository is private, do the [installation](/getting-started/installation/) steps once first.</Aside>
+<Aside>wardn needs Go 1.26 or newer. See [installation](/getting-started/installation/) for the other packages and the command-line tool.</Aside>
 
 <Steps>
 
@@ -42,6 +42,8 @@ This guide adds wardn to an existing Go web service that uses chi and PostgreSQL
        assignable_at: [branch]
        allow: [customer:view, loan:create]
    ```
+
+   <Aside type="caution">Every permission is written `resource:action`, such as `loan:approve`: at least two parts separated by `:`. Each part uses only lowercase letters `a`–`z`, digits and `_`, and starts with a letter. A `.` may join words inside a part (`roles.manage`). `approve`, `Loan:Approve` and `loan:approve-own` are all rejected, and the app won't start. See [naming rules](/concepts/permissions/#naming-rules).</Aside>
 
    `global` (in `super_admin`'s `assignable_at`) is the scope above everything, which every product has without declaring it. A role assigned there applies everywhere.
 

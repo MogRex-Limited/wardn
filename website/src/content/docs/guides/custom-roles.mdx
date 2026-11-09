@@ -7,7 +7,7 @@ import { Aside } from '@astrojs/starlight/components';
 
 Most serious products need a "Create role" button. wardn gives you the whole lifecycle, and the [escalation guard](/guides/escalation-guard/) makes it safe to expose.
 
-All the calls below act **as the signed-in user** in `ctx` (set by your authentication middleware with `wardn.WithUser`). Without one, they fail with `ErrUnauthenticated`.
+The calls below that change roles or assignments, and `AssignableRoles`, act **as the signed-in user** in `ctx` (set by your authentication middleware with `wardn.WithUser`). Without one, they fail with `ErrUnauthenticated`. The other reads don't need a user (see the note below).
 
 ## The screens and the calls behind them
 

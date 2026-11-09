@@ -52,6 +52,43 @@ func validPermission(s string) bool {
 	return true
 }
 
+// permissionProblem explains why name is not a valid permission, in words
+// a developer can act on, with a corrected name when there is an obvious
+// one. It returns "" for a valid permission.
+func permissionProblem(name string) string {
+	suggest := func(problem, fixed string) string {
+		if fixed != name && validPermission(fixed) {
+			return fmt.Sprintf("%s; did you mean %q?", problem, fixed)
+		}
+		return problem
+	}
+	switch {
+	case validPermission(name):
+		return ""
+	case len(name) > maxPermissionLen:
+		return fmt.Sprintf("it is longer than %d characters", maxPermissionLen)
+	case !strings.Contains(name, ":"):
+		fixed := name
+		if i := strings.LastIndexByte(name, '.'); i >= 0 {
+			fixed = name[:i] + ":" + name[i+1:]
+		}
+		return suggest("it has no ':' between the resource and the action", fixed)
+	case strings.ToLower(name) != name:
+		return suggest("it has capital letters", strings.ToLower(name))
+	case strings.ContainsAny(name, "- "):
+		return suggest("it has '-' or a space", strings.NewReplacer("-", "_", " ", "_").Replace(name))
+	}
+	for _, seg := range strings.Split(name, ":") {
+		if seg == "" {
+			return "it has an empty part: two ':' in a row, or one at the start or end"
+		}
+		if !validSegment(seg) {
+			return fmt.Sprintf("in %q, use lowercase letters, digits, '_' and '.', with each word starting with a letter", seg)
+		}
+	}
+	return "it is not of the form resource:action"
+}
+
 // validPattern reports whether s is a valid permission pattern for use in a
 // role: a concrete permission, "*" (everything), or a prefix of one or more
 // segments followed by ":*" (for example "loan:*").

@@ -7,7 +7,7 @@ All notable changes to wardn are documented here. The format follows
 ## [Unreleased]
 
 Planned as v1.2.0, with `store/mongo`, `store/pgx` and `cache/redis` v1.2.0
-(lockstep). Every change is an addition.
+(lockstep). Every API change is an addition.
 
 ### Changed
 
@@ -15,9 +15,24 @@ Planned as v1.2.0, with `store/mongo`, `store/pgx` and `cache/redis` v1.2.0
   public and the module is fetched through the public Go module proxy: no
   `GOPRIVATE` setting or credentials are needed any more. CodeQL code
   scanning runs on every change.
+- **Clearer errors for invalid permission names.** The policy error now
+  says what is wrong and, when there is an obvious fix, suggests it:
+  `invalid permission "organization.read": it has no ':' between the
+  resource and the action; did you mean "organization:read"?`. Code that
+  matches the old message text needs updating; the rule itself is
+  unchanged.
+- **Docs:** every page checked against the code, and corrected where they
+  differed. Each page now ends with a discussion thread, and a new
+  Community section links to GitHub Discussions for questions, ideas and
+  concerns.
 
 ### Added
 
+- **`Store.RunInTx`** in `store/sql` and `store/pgx`: runs a function in a
+  new transaction that wardn's changes join, commits or rolls back (also on
+  a panic), and ends wardn's transaction after the commit. It replaces the
+  `WithTx` + `Transaction` + `ended` sequence for new transactions, where
+  calling `ended` before the commit was an easy mistake.
 - **`store/pgx`** (package `wardnpgx`), a new module: a PostgreSQL store for
   applications built on pgx. It takes a `*pgxpool.Pool` (or `*pgx.Conn`) and,
   with `Store.WithTx`, the application's own `pgx.Tx`, so access changes
@@ -357,3 +372,7 @@ These changed during the final review. Each one is described in full below.
 
 - CodeQL workflow, until the repository is public or GitHub Advanced
   Security is enabled (see docs/MAINTAINING.md).
+
+[Unreleased]: https://github.com/MogRex-Limited/wardn/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/MogRex-Limited/wardn/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/MogRex-Limited/wardn/releases/tag/v1.0.0

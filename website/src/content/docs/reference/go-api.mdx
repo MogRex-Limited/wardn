@@ -12,6 +12,9 @@ The full reference is generated from the code with `go doc github.com/MogRex-Lim
 | `wardn.New(Config) (*Warden, error)` / `MustNew` | Validate the policy and start. |
 | `wardn.LoadPolicyFile(path)` / `ParsePolicy(data, name)` | Read a policy without starting. |
 | `(*Policy).Validate() error` | Check a policy and report every problem. |
+| `wardn.Policy`, `ScopeType`, `Role` | A policy defined in Go: `Scopes`, `Permissions`, `Roles`; `Parent`; `Description`, `Allow`, `Deny`, `AssignableAt`. |
+| `wardn.DefaultPolicyFile` | `"wardn.yaml"`, read when `Config` sets neither `File` nor `Policy`. |
+| `wardn.PermRolesManage` / `PermRolesAssign` | The built-in permissions `wardn:roles.manage` and `wardn:roles.assign`. |
 
 ## Checking access
 
@@ -54,12 +57,13 @@ The full reference is generated from the code with `go doc github.com/MogRex-Lim
 | `w.CreateRole(ctx, owner, RoleSpec) (CustomRole, error)` | Create a custom role. |
 | `w.UpdateRole(ctx, id, RoleSpec, version)` | Edit one, with conflict detection. |
 | `w.DeleteRole(ctx, id, wardn.Cascade())` | Delete one; `Cascade` also revokes it. |
-| `w.System()` | The same methods, unguarded, for jobs and setup. |
+| `w.System()` | `Assign`, `Revoke`, `CreateRole`, `UpdateRole` and `DeleteRole`, unguarded and audited as `system`, for jobs and setup. |
 
 ## Transactions *(v1.1)*
 
 | | |
 |---|---|
+| `store.RunInTx(ctx, w, opts, fn func(ctx context.Context, tx) error) error` | Run `fn` in a new transaction (`tx` is a `*sql.Tx` or a `pgx.Tx`): commits if it returns `nil`, rolls back otherwise, and keeps the cache in step. `opts` is a `*sql.TxOptions` (SQL store) or a `pgx.TxOptions` (pgx store). v1.2. |
 | `store.WithTx(ctx, tx) context.Context` | Read and write through your transaction: a `*sql.Tx` (SQL store) or a `pgx.Tx` (pgx store, v1.2). |
 | `w.Transaction(ctx) (context.Context, func(context.Context) error)` | Changes commit with your transaction; call the returned function after it ends. |
 | `wardn.TxStore` | Implemented by stores that support this (`InTx(ctx) bool`). |
@@ -76,16 +80,19 @@ See [changes in your own transaction](/guides/transactions/).
 | `w.Roles(ctx, scope) ([]RoleInfo, error)` | Roles assignable at a scope. |
 | `w.AssignableRoles(ctx, scope)` | Those the user in `ctx` may grant. |
 | `w.CustomRole(ctx, id) (CustomRole, error)` | One custom role, for an edit form. |
-| `w.Members(ctx, scope, cursor, limit)` | Who holds which role at a scope, paginated. |
+| `w.Members(ctx, scope, cursor, limit) ([]Assignment, string, error)` | Who holds which role at a scope, paginated (at most 500 per page). |
+| `wardn.EncodeMemberCursor(user, role)` / `DecodeMemberCursor(cursor)` | A `Members` cursor format that stores may use. |
 
 ## Expiry and cache
 
 | | |
 |---|---|
-| `w.SweepExpired(ctx, wardn.RemoveExpired())` | Report (and optionally remove) expired assignments. |
-| `w.RunExpiry(ctx, interval, onError)` | Sweep on a timer. |
+| `w.SweepExpired(ctx, opts ...SweepOption) (int, error)` | Report expired assignments and return how many; `wardn.RemoveExpired()` also removes them. |
+| `w.RunExpiry(ctx, interval, onError, opts ...SweepOption)` | Sweep on a timer. |
 | `w.InvalidateCache(ctx, scopes...)` | After changes made behind wardn's back. |
-| `wardn.NewMemoryCache()` / `wardn.NewMemoryStore()` | In-process cache and store. |
+| `wardn.NewMemoryCache(opts...)` / `wardn.NewMemoryStore()` | In-process cache and store. |
+| `wardn.WithMaxEntries(n)` / `WithCacheClock(now)` | Memory cache options: entry limit (default 100,000) and expiry clock for tests. |
+| `wardn.DefaultCacheTTL` | 5 seconds, used when `Config.CacheTTL` is zero. |
 | `w.Now()` | The time on wardn's clock (`Config.Clock`); use it when computing time windows. |
 
 ## Key types
@@ -95,9 +102,42 @@ See [changes in your own transaction](/guides/transactions/).
 | `Scope` | `Type`, `ID` |
 | `Decision` | `Allowed`, `User`, `Permission`, `Scope`, `Role`, `At`, `Rule`, `Reason` |
 | `Assignment` | `User`, `Role`, `Scope`, `StartsAt`, `ExpiresAt` |
-| `CustomRole` | `ID`, `Owner`, `Name`, `Description`, `Allow`, `AssignableAt`, `Version`, times |
+| `CustomRole` | `ID`, `Owner`, `Name`, `NameKey`, `Description`, `Allow`, `AssignableAt`, `Version`, `CreatedAt`, `UpdatedAt` |
 | `RoleSpec` | `Name`, `Description`, `Allow`, `AssignableAt` |
 | `RoleInfo` | A role for display: system or custom, owner, grants, denies |
-| `Event` | An audited change: `Type`, `Actor`, `System`, `At`, target, `Before`, `After`, `Err` |
+| `Event` | An audited change: `Type`, `Actor`, `System`, `At`, `User`, `Role`, `Scope`, `Parent`, `PreviousParent`, `StartsAt`, `ExpiresAt`, `Before`, `After`, `Err` |
+| `EventType` | `EventAssigned`, `EventRevoked`, `EventExpired`, `EventRoleCreated`, `EventRoleUpdated`, `EventRoleDeleted`, `EventLinked`, `EventMoved` |
+| `Permission` | `Name`, `Description` (from `Catalog`) |
+| `DeniedError` | `Decisions`; wraps `ErrDenied` |
+| `UndefinedError` | `Kind`, `Name`, `Suggestion` |
+| `PolicyError` / `PolicyIssue` | `Source`, `Issues`; each issue has `Line`, `Path`, `Message` |
 
-All public types encode to JSON with stable `snake_case` field names, ready for admin APIs.
+## Stores and caches
+
+| | |
+|---|---|
+| `wardn.Store` (`AssignmentStore`, `RoleStore`, `ScopeStore`) / `wardn.Migrator` / `wardn.Cache` | The interfaces to implement. See [Writing a store](/reference/writing-a-store/). |
+| `wardnsql.New(db *sql.DB, opts...) (*Store, error)` / `MustNew` | PostgreSQL, MySQL, MariaDB and SQLite over `database/sql`. |
+| `wardnsql.WithDialect(d)` / `WithTablePrefix(prefix)` | Options: `DetectDialect` (default), `Postgres`, `MySQL` or `SQLite`; table prefix (default `wardn_`). |
+| `wardnpgx.New(db wardnpgx.DB, opts...) (*Store, error)` / `MustNew` | PostgreSQL through pgx. `DB` is a `*pgxpool.Pool` or a `*pgx.Conn`. v1.2. |
+| `wardnpgx.WithTablePrefix(prefix)` | Table prefix (default `wardn_`). v1.2. |
+| `wardnmongo.New(db *mongo.Database, opts...) (*Store, error)` / `MustNew` | MongoDB. |
+| `wardnmongo.WithCollectionPrefix(prefix)` | Collection prefix (default `wardn_`). |
+| `ErrSchemaTooNew` / `LatestSchemaVersion` | In each store package: the database was upgraded by a newer wardn; the schema version this release writes. |
+| `wardnredis.New(rdb redis.UniversalClient, namespace) (*Cache, error)` / `MustNew` | A shared cache on Redis or Valkey. `namespace` separates applications. |
+| `storetest.Run(t, newStore)` / `storetest.Bench(b, newStore)` | The store conformance suite and benchmarks. |
+| `cachetest.Run(t, newCache)` | The cache conformance suite. |
+
+## Testing (`wardntest`)
+
+| | |
+|---|---|
+| `wardntest.New(t, policyFile, opts...)` / `NewFromPolicy(t, policy, opts...)` | A Warden for your real policy, in memory. |
+| `wardntest.WithStore(store)` / `WithClock(clock)` | Options for `New` and `NewFromPolicy`. |
+| `wardntest.AllowAll(t, policyFile)` | A Warden that allows everything, but still rejects undefined permissions. |
+| `wardntest.AsRole(t, w, r, roles...)` / `AsRoleIn(t, w, r, scope, roles...)` | The request, made by a fresh user holding the roles globally or at a scope. |
+| `wardntest.NewUser(t, w, scope, roles...) string` | A fresh user ID holding the roles at a scope. |
+| `wardntest.AuditRoutes(t, handler, authenticate, routes, public...)` | Fail for every route that a user with no roles can reach. `Route` is a `Method` and `Path`; the probe user is `AuditUser`. |
+| `wardntest.NewClock(start)` | A fake clock with `Now`, `Set` and `Advance`. |
+
+The data types (`Decision`, `Event`, `Assignment`, `CustomRole`, `Permission` and the other types returned for admin screens) encode to JSON with stable `snake_case` field names, ready for admin APIs. Errors don't: map them with `wardn.HTTPStatus`.

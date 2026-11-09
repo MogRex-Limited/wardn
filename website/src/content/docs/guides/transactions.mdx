@@ -7,7 +7,34 @@ import { Aside } from '@astrojs/starlight/components';
 
 Adding a member to an organisation usually writes several things: your own `members` row, an audit record, perhaps an outbox message for a welcome email, and wardn's role assignment. They should all happen, or none of them should.
 
-With the SQL store (`database/sql`) or the pgx store, wardn can write inside **your** transaction. With the SQL store:
+With the SQL store (`database/sql`) or the pgx store, wardn can write inside **your** transaction. The simplest way is `store.RunInTx`, which starts the transaction, commits or rolls it back, and keeps wardn's cache in step:
+
+```go
+err := store.RunInTx(ctx, w, nil, func(ctx context.Context, tx *sql.Tx) error {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO members (org_id, user_id) VALUES ($1, $2)`, orgID, userID); err != nil {
+		return err
+	}
+	return w.Assign(ctx, userID, "agent", product) // if this fails, the member row is rolled back too
+})
+```
+
+Use the `ctx` that `RunInTx` passes to your function for every call inside it, wardn's and your own.
+
+| Your function | What `RunInTx` does |
+|---|---|
+| returns `nil` | Commits, then tells wardn the transaction is over. |
+| returns an error | Rolls back, and returns your error. |
+| panics | Rolls back, tells wardn, and lets the panic continue. |
+
+The third argument sets the isolation level and read-only mode: a `*sql.TxOptions` for the SQL store, or a `pgx.TxOptions` for the pgx store. `nil` (or `pgx.TxOptions{}`) uses the database's defaults.
+
+<Aside type="note" title="Committed, but the cache wasn't told">
+If `RunInTx` returns an error that matches `wardn.ErrCacheInvalidation`, the transaction **committed**: only invalidating the cache failed, and other instances may serve the old state for up to the cache TTL. Log it; don't report the change as failed. The same error comes from changes made outside a transaction.
+</Aside>
+
+## When you already have a transaction
+
+If your code opens transactions itself, or through a helper of its own, make the two calls `RunInTx` makes for you:
 
 ```go
 tx, err := db.BeginTx(ctx, nil)
@@ -32,14 +59,12 @@ if endErr := ended(ctx); endErr != nil {
 return err
 ```
 
-Two calls set it up:
-
 | Call | What it does |
 |---|---|
 | `store.WithTx(ctx, tx)` | The store reads and writes through `tx` instead of starting its own transaction. `tx` must be on the store's database. |
 | `w.Transaction(ctx)` | Tells wardn the changes commit later, and returns `ended`. Call `ended` once the transaction is over, after a commit or a rollback. |
 
-If your code opens transactions through a helper that commits for you, call `w.Transaction` around the helper and `store.WithTx` inside it, then call `ended` after the helper returns. Calling `ended` inside the callback would run it before the commit:
+With a helper that commits for you, call `w.Transaction` around the helper and `store.WithTx` inside it, then call `ended` after the helper returns. Calling `ended` inside the callback would run it before the commit:
 
 ```go
 wctx, ended := w.Transaction(ctx)
@@ -58,7 +83,7 @@ Everything wardn offers works inside: `Assign`, `Revoke`, `Link`, `Move`, `Creat
 - **Invalidation at the end.** The cache is invalidated before each change and again when you call `ended`, so once the transaction commits, no instance serves the old state.
 
 <Aside type="caution" title="Always call ended">
-If `ended` isn't called, other instances may keep serving the state from before the commit until their cache entries expire (`CacheTTL`, five seconds by default). Without a cache, `ended` has nothing to do, but calling it costs nothing and keeps the code right if you add a cache later.
+`RunInTx` does this for you. If you call `w.Transaction` yourself and `ended` isn't called, other instances may keep serving the state from before the commit until their cache entries expire (`CacheTTL`, five seconds by default). Without a cache, `ended` still clears what the request remembered, and keeps the code right if you add a cache later.
 </Aside>
 
 ## Mistakes wardn catches
@@ -85,11 +110,22 @@ OnChange: func(ctx context.Context, e wardn.Event) error {
 
 ## Using pgx
 
-If your application uses pgx directly, use the pgx store (`wardn/store/pgx`, v1.2). It takes your `pgx.Tx` as it is, so your existing transaction helpers just pass it through:
+If your application uses pgx directly, use the pgx store (`wardn/store/pgx`, v1.2). It takes your `pgx.Tx` as it is:
 
 ```go
 store := wardnpgx.MustNew(pool) // your *pgxpool.Pool
 
+err := store.RunInTx(ctx, w, pgx.TxOptions{}, func(ctx context.Context, tx pgx.Tx) error {
+	if _, err := tx.Exec(ctx, `INSERT INTO members (org_id, user_id) VALUES ($1, $2)`, orgID, userID); err != nil {
+		return err
+	}
+	return w.Assign(ctx, userID, "agent", product)
+})
+```
+
+Your existing pgx transaction helpers work too, with `WithTx` and `w.Transaction` as above:
+
+```go
 wctx, ended := w.Transaction(ctx)
 err := pgx.BeginFunc(wctx, pool, func(tx pgx.Tx) error {
 	ctx := store.WithTx(wctx, tx)

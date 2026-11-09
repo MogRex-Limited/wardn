@@ -230,3 +230,81 @@ func TestCheckEachSQL(t *testing.T) {
 		})
 	}
 }
+
+func TestRunInTx(t *testing.T) {
+	for _, d := range databases(t) {
+		t.Run(d.name, func(t *testing.T) {
+			s := newTxSetup(t, d)
+			ctx := context.Background()
+			org, product := wardn.NewScope("organisation", "acme"), wardn.NewScope("product", "helpdesk")
+			if err := s.w.Link(ctx, product, org); err != nil {
+				t.Fatal(err)
+			}
+			addMember := func(ctx context.Context, tx *sql.Tx) error {
+				if _, err := tx.ExecContext(ctx, s.insertMember(), "kemi"); err != nil {
+					return err
+				}
+				return s.w.System().Assign(ctx, "kemi", "agent", product)
+			}
+			errRollback := errors.New("roll back")
+			s.w.Can(ctx, "kemi", "ticket:reply", product) // cache "no access"
+
+			err := s.store.RunInTx(ctx, s.w, nil, func(ctx context.Context, tx *sql.Tx) error {
+				if err := addMember(ctx, tx); err != nil {
+					return err
+				}
+				if !s.w.Can(ctx, "kemi", "ticket:reply", product) {
+					t.Error("the transaction does not see its own assignment")
+				}
+				return errRollback
+			})
+			if !errors.Is(err, errRollback) {
+				t.Fatalf("fn's error: %v", err)
+			}
+			if s.members(t) != 0 || s.w.Can(ctx, "kemi", "ticket:reply", product) {
+				t.Fatal("a failed fn left the row or the access behind")
+			}
+
+			func() {
+				defer func() {
+					if recover() == nil {
+						t.Error("the panic was swallowed")
+					}
+				}()
+				_ = s.store.RunInTx(ctx, s.w, nil, func(ctx context.Context, tx *sql.Tx) error {
+					if err := addMember(ctx, tx); err != nil {
+						return err
+					}
+					panic("boom")
+				})
+			}()
+			if s.members(t) != 0 || s.w.Can(ctx, "kemi", "ticket:reply", product) {
+				t.Fatal("a panicking fn left the row or the access behind")
+			}
+
+			err = s.store.RunInTx(ctx, s.w, &sql.TxOptions{}, func(txCtx context.Context, tx *sql.Tx) error {
+				if err := addMember(txCtx, tx); err != nil {
+					return err
+				}
+				// Outside the transaction: caches "no access" until RunInTx
+				// ends wardn's transaction after the commit.
+				if s.w.Can(ctx, "kemi", "ticket:reply", product) {
+					t.Error("an uncommitted assignment is visible outside the transaction")
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if s.members(t) != 1 {
+				t.Fatal("the commit lost the application's row")
+			}
+			if !s.w.Can(ctx, "kemi", "ticket:reply", product) {
+				t.Fatal("committed access is not visible: the cache kept the old state")
+			}
+			if err := s.store.RunInTx(ctx, nil, nil, addMember); err == nil {
+				t.Error("a nil Warden accepted")
+			}
+		})
+	}
+}

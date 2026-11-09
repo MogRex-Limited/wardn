@@ -22,7 +22,7 @@ Some protections in the [threat model](THREAT_MODEL.md) (S02–S05) cannot be en
   - [ ] Require conversation resolution before merging
 - [ ] Require status checks to pass, with branches up to date:
   - `Test (Go 1.26.x)`, `Test (Go 1.27.x)`, `Lint (.)`, `Lint (store/mongo)`, `Lint (store/pgx)`, `Lint (cache/redis)`, `Lint (tests/integration)`, `Supply chain`, `Integration (real databases)`
-  - add `Analyze (Go)` when CodeQL is restored (see "CodeQL" below)
+  - `Analyze (Go)`, once CodeQL has run on `main` (see "CodeQL" below)
 - [ ] Require signed commits
 - [ ] Require linear history
 - [ ] Block force pushes
@@ -57,11 +57,11 @@ docker pull postgres:17-alpine && docker image inspect --format '{{index .RepoDi
 
 ### Billing
 
-GitHub Actions on a private repository uses the organisation's included minutes (2,000 a month on the Free plan). If the organisation's billing is in a failed-payment state, **no workflows run at all**, including the security gates. An organisation owner must keep billing in good standing, even with a $0 spending limit. Until it is, the pre-push hook (`make hooks`) is the only enforcement, and it can be bypassed.
+GitHub Actions is free for standard runners on a public repository. Even so, if the organisation's billing is in a failed-payment state, workflows may not run at all, including the security gates. An organisation owner must keep billing in good standing, even with a $0 spending limit. Until it is, the pre-push hook (`make hooks`) is the only enforcement, and it can be bypassed.
 
 ### Actions (Settings → Actions → General)
 
-- [ ] Allow only actions from GitHub and these verified creators: `actions/*` (including `actions/attest-build-provenance`), `golangci/golangci-lint-action` (add `github/codeql-action/*` when CodeQL is restored)
+- [ ] Allow only actions from GitHub and these verified creators: `actions/*` (including `actions/attest-build-provenance`), `golangci/golangci-lint-action`, `github/codeql-action/*`
 - [ ] Require actions to be pinned to a full-length commit SHA
 - [ ] Workflow permissions: **read repository contents** (default token is read-only)
 - [ ] Do **not** allow GitHub Actions to create or approve pull requests
@@ -94,7 +94,7 @@ wardn is a Go module: users download source through the Go module proxy, and the
    git push origin v1.2.0
    ```
    Then tag the sub-modules on the same commit (see [Sub-modules](#sub-modules)).
-4. Create the GitHub release from the tag, with the changelog section as notes.
+4. Wait for the release workflow (below) to create the GitHub release, then check it. Its notes link to the changelog.
 5. Check that the new version appears on `pkg.go.dev` and that `go get github.com/MogRex-Limited/wardn@v1.2.0` works.
 
 Pushing the tag starts `.github/workflows/release.yml`. It:
