@@ -108,11 +108,7 @@ jobs:
 
   integration:
     name: Integration (real databases)
-    # Pinned, not ubuntu-latest: MongoDB 8.0 refuses to start on Linux
-    # kernels 6.19+ (SERVER-121912, a tcmalloc/rseq crash), which
-    # ubuntu-latest moved to with Ubuntu 26. Move on once a MongoDB 8.0
-    # release supports them.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     # Images pinned by digest; keep in sync with tests/integration/compose.yaml.
     services:
@@ -142,6 +138,12 @@ jobs:
           --health-cmd "healthcheck.sh --connect --innodb_initialized" --health-interval 2s --health-retries 60
       mongo:
         image: mongo:8.0@sha256:b9924c330a8bbc5800fe9c69f04a84e221eca7b28fd049a0354147d9908fa142
+        # MongoDB 8.0 refuses to start on Linux kernels from 6.19 until the
+        # rseq fix (SERVER-121912, a tcmalloc bug), which GitHub's runners
+        # now use. This makes tcmalloc use per-thread caches instead of
+        # rseq. Remove it once a MongoDB 8.0 release includes the fix.
+        env:
+          GLIBC_TUNABLES: glibc.pthread.rseq=1
         ports: ["27017:27017"]
         options: >-
           --health-cmd "mongosh --quiet --eval 'db.adminCommand(\"ping\").ok'" --health-interval 2s --health-retries 60

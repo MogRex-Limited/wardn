@@ -6,8 +6,11 @@ All notable changes to wardn are documented here. The format follows
 
 ## [Unreleased]
 
-Planned as v1.2.0, with `store/mongo`, `store/pgx` and `cache/redis` v1.2.0
-(lockstep). Every API change is an addition.
+## [1.2.0] - 2026-11-09
+
+Released together with `store/mongo` v1.2.0, `cache/redis` v1.2.0 and the
+new `store/pgx` v1.2.0. Every API change is an addition: code written for
+v1.1.0 builds and behaves the same.
 
 ### Changed
 
@@ -373,6 +376,7 @@ These changed during the final review. Each one is described in full below.
 - CodeQL workflow, until the repository is public or GitHub Advanced
   Security is enabled (see docs/MAINTAINING.md).
 
-[Unreleased]: https://github.com/MogRex-Limited/wardn/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/MogRex-Limited/wardn/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/MogRex-Limited/wardn/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/MogRex-Limited/wardn/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/MogRex-Limited/wardn/releases/tag/v1.0.0

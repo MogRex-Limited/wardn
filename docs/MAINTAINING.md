@@ -49,7 +49,7 @@ Some protections in the [threat model](THREAT_MODEL.md) (S02–S05) cannot be en
 
 ### Database images
 
-The integration servers (PostgreSQL, MySQL, MariaDB, MongoDB, Redis) are pinned by digest in two places that must match: `tests/integration/compose.yaml` and the `integration` job in `.github/workflows/ci.yml`. Dependabot does not update them. Refresh them deliberately, at least once per milestone:
+The integration servers (PostgreSQL, MySQL, MariaDB, MongoDB, Redis) are pinned by digest in two places that must match: `tests/integration/compose.yaml` and the `integration` job in `.github/workflows/ci.yml`. Dependabot does not update them. Refresh them deliberately, at least once per milestone. When you refresh MongoDB, check whether the new 8.0 release includes the fix for SERVER-121912 (it refused to start on Linux kernels from 6.19); if it does, remove the `GLIBC_TUNABLES` setting from both files.
 
 ```bash
 docker pull postgres:17-alpine && docker image inspect --format '{{index .RepoDigests 0}}' postgres:17-alpine
