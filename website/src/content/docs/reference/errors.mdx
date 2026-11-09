@@ -18,6 +18,7 @@ Test for errors with `errors.Is`. `wardn.HTTPStatus(err)` gives the status code 
 | `ErrRoleInUse` | Deleting a role that is still assigned, without `Cascade()`. | `409` |
 | `ErrAlreadyLinked` | `Link` to a different parent than the scope already has; usually two tenants reusing an ID. Use `Move` to move on purpose. | `409` |
 | `ErrInvalidLink` | A link contradicts the scope tree, or stored data does. | `500` |
+| `ErrNoTransaction` | A change had only one of `store.WithTx` and `w.Transaction` in its context; it needs both (`store.RunInTx` adds both). See [your own transaction](/guides/transactions/). | `500` |
 | `ErrLinksExternal` | `Link` was called while `Config.ParentOf` is set. | `500` |
 | `ErrAuditRejected` | `OnChange` returned an error, so the change wasn't made. | `500` |
 | `ErrCacheInvalidation` | The change was saved, but the cache couldn't be invalidated afterwards. Retrying is safe. | `500` |
@@ -28,8 +29,8 @@ Test for errors with `errors.Is`. `wardn.HTTPStatus(err)` gives the status code 
 
 ```text
 wardn: permission "loan:aprove" is not defined; did you mean "loan:approve"?
-wardn: role "teller" cannot be assigned at organisation:acme; it is assignable at: branch
-wardn: cannot link branch:lagos to organisation:acme; a branch's parent must be a region
+wardn: role is not assignable at this scope: role "teller" cannot be assigned at organisation:acme; it is assignable at: branch
+wardn: invalid scope link: cannot link branch:lagos to organisation:acme; a branch's parent must be a region
 wardn: you cannot grant permissions you do not hold: "report:export" at branch:lagos
 ```
 

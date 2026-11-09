@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
+	"github.com/MogRex-Limited/wardn"
 )
 
 // txKey identifies one Store's application transaction in a context, so a
@@ -115,4 +117,52 @@ func savepoint(ctx context.Context, tx *sql.Tx, fn func(querier) error) error {
 		return fmt.Errorf("wardnsql: releasing savepoint: %w", err)
 	}
 	return nil
+}
+
+// RunInTx runs fn in a new transaction on the store's database, and commits
+// it if fn returns nil. If fn fails or panics, it rolls back. The ctx
+// passed to fn is ready for wardn changes in that transaction (WithTx and
+// w.Transaction), so access commits or rolls back with the application's
+// own writes through tx:
+//
+//	err := store.RunInTx(ctx, w, nil, func(ctx context.Context, tx *sql.Tx) error {
+//		if _, err := tx.ExecContext(ctx, insertMember, orgID, userID); err != nil {
+//			return err
+//		}
+//		return w.Assign(ctx, userID, "agent", product)
+//	})
+//
+// RunInTx ends wardn's transaction after the commit or rollback, which is
+// easy to get wrong by hand. It returns fn's error, or else the commit's.
+// If the transaction committed but invalidating the cache then failed, it
+// returns an error matching wardn.ErrCacheInvalidation: the changes are
+// saved, and other instances may serve the old state for up to the cache
+// TTL.
+//
+// opts sets the isolation level and read-only mode, as in
+// sql.DB.BeginTx; nil uses the database's defaults.
+func (s *Store) RunInTx(ctx context.Context, w *wardn.Warden, opts *sql.TxOptions, fn func(ctx context.Context, tx *sql.Tx) error) (err error) {
+	if w == nil || fn == nil {
+		return errors.New("wardnsql: RunInTx needs a Warden and a function")
+	}
+	tx, err := s.db.BeginTx(ctx, opts)
+	if err != nil {
+		return fmt.Errorf("wardnsql: starting transaction: %w", err)
+	}
+	txCtx, ended := w.Transaction(s.WithTx(ctx, tx))
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback() // its error adds nothing to fn's, or to the panic
+		}
+		// After the commit or rollback, also when fn panics.
+		if endErr := ended(ctx); endErr != nil && err == nil {
+			err = endErr
+		}
+	}()
+	if err := fn(txCtx, tx); err != nil {
+		return err
+	}
+	committed = true // Commit ends the transaction whatever it returns
+	return tx.Commit()
 }

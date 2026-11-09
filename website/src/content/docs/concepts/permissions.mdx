@@ -5,7 +5,7 @@ description: Actions your code checks, how to name them, and how wildcards work.
 
 import { Aside } from '@astrojs/starlight/components';
 
-A **permission** is an action your code checks, written `resource:action`:
+A **permission** is an action your code checks. It is always written `resource:action`, such as `loan:approve`. A name without a `:`, such as `approve`, is rejected. See the [naming rules](#naming-rules).
 
 ```yaml title="wardn.yaml"
 permissions:
@@ -27,11 +27,24 @@ Every permission needs a description. Admin screens show it ("Approve loans") to
 
 ## Naming rules
 
-- Two or more segments separated by `:`, such as `loan:approve` or `loan:approve:own`.
-- Each segment uses lowercase letters, digits and `_`, starting with a letter. Dots are allowed inside a segment (`roles.manage`).
+- Two or more segments separated by `:`, such as `loan:approve` or `loan:approve:own`. A single word such as `approve` is not a permission.
+- Each segment uses only lowercase ASCII letters (`a`–`z`), digits and `_`, and starts with a letter.
+- A `.` may join words inside a segment (`roles.manage`). Each word starts with a letter too, so `roles.` and `.manage` are rejected.
+- Nothing else: no capitals, `-`, spaces or other characters.
 - At most 128 characters.
 
-Anything else is rejected when wardn starts, with the file, line and a suggestion.
+| Valid | Rejected |
+|---|---|
+| `loan:approve` | `approve` (no `:`) |
+| `loan:approve:own` | `Loan:Approve` (capitals) |
+| `wardn:roles.manage` | `loan:approve-own` (`-`) |
+| `report:export_csv` | `loan:2fa` (segment starts with a digit) |
+
+Anything else is rejected when wardn starts, with the file, the line, what is wrong and, when there is an obvious fix, the corrected name:
+
+```text
+wardn.yaml:3: permissions.organization.read: invalid permission "organization.read": it has no ':' between the resource and the action; did you mean "organization:read"? (permissions are resource:action, e.g. loan:approve)
+```
 
 ## Wildcards
 

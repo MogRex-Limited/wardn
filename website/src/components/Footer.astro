@@ -1,0 +1,13 @@
+---
+// Starlight's footer, with the page's discussion thread above it. A page
+// opts out with `discussion: false` in its frontmatter; splash pages (the
+// home page) never show one.
+import Default from '@astrojs/starlight/components/Footer.astro';
+import Discussion from './Discussion.astro';
+
+const { entry } = Astro.locals.starlightRoute;
+const show = entry.data.template !== 'splash' && entry.data.discussion !== false;
+---
+
+{show && <Discussion />}
+<Default />

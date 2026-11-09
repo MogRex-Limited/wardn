@@ -32,8 +32,9 @@ type Event struct {
 	Type EventType `json:"type"`
 	// Actor is the acting user's ID. It is empty when System is true.
 	Actor string `json:"actor,omitempty"`
-	// System is true for changes made through Warden.System and by the
-	// expiry sweeper, where no user is acting.
+	// System is true where no user is acting: changes made through
+	// Warden.System, Link and Move called with no signed-in user in ctx,
+	// and the expiry sweeper.
 	System bool      `json:"system"`
 	At     time.Time `json:"at,omitzero"`
 

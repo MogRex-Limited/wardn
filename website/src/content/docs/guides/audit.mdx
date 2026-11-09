@@ -15,7 +15,7 @@ wardn.Config{
 		return auditLog.Write(ctx, AuditRecord{
 			Type:   string(e.Type), // "assignment.created", "role.updated", ...
 			Actor:  e.Actor,        // the signed-in user who made the change
-			System: e.System,       // true for System() calls and expiry sweeps
+			System: e.System,       // true for System() calls, expiry sweeps, and links made with no signed-in user
 			User:   e.User,
 			Role:   e.Role,
 			Scope:  e.Scope.String(),
@@ -63,8 +63,8 @@ wardn.Config{
 }
 ```
 
-It's called for every `Can`, `Check`, `CanAny`, `CanAll` and `Require`. It must be fast and must not panic. Logging only denials is a common choice.
+It's called for every `Can`, `Check`, `CanAny`, `CanAll`, `CanEach` and `CheckEach`, and in the `Require` and `RequireAny` middleware. `CanEach` and `CheckEach` call it once per scope. It must be fast and must not panic. Logging only denials is a common choice.
 
 ## System actions are unambiguous
 
-Changes made through `System()`, and expiry sweeps, have `Event.System` set and an empty `Actor`, so they can never be confused with a real user, even one whose ID happens to be `"system"`.
+Changes made through `System()`, expiry sweeps, and `Link` or `Move` calls with no signed-in user in `ctx` have `Event.System` set and an empty `Actor`, so they can never be confused with a real user, even one whose ID happens to be `"system"`.

@@ -20,7 +20,7 @@ wardn is split so that each product downloads only what it uses. The core has no
 |---|---|---|
 | The library, the in-memory store and cache, and the HTTP middleware | `github.com/MogRex-Limited/wardn` | `go get github.com/MogRex-Limited/wardn` |
 | PostgreSQL, MySQL, MariaDB or SQLite | `github.com/MogRex-Limited/wardn/store/sql` | included in the core module |
-| PostgreSQL through pgx (`pgxpool`, `pgx.Tx`) | `github.com/MogRex-Limited/wardn/store/pgx` | `go get github.com/MogRex-Limited/wardn/store/pgx` |
+| PostgreSQL through pgx (`pgxpool`, `pgx.Tx`), from v1.2 | `github.com/MogRex-Limited/wardn/store/pgx` | `go get github.com/MogRex-Limited/wardn/store/pgx` (once v1.2 is released) |
 | MongoDB | `github.com/MogRex-Limited/wardn/store/mongo` | `go get github.com/MogRex-Limited/wardn/store/mongo` |
 | A cache shared by several instances (Redis or Valkey) | `github.com/MogRex-Limited/wardn/cache/redis` | `go get github.com/MogRex-Limited/wardn/cache/redis` |
 | Test helpers | `github.com/MogRex-Limited/wardn/wardntest` | included in the core module |
@@ -64,10 +64,10 @@ go tool wardn check    # validate wardn.yaml
 go tool wardn gen      # write perm/perm.go
 ```
 
-Signed release binaries for Linux, macOS and Windows are also published with each release, with build provenance you can verify:
+[GitHub releases](https://github.com/MogRex-Limited/wardn/releases) also carry signed binaries for Linux, macOS and Windows, with build provenance you can verify. If the release you want has none, use `go tool wardn` as above. To verify a binary:
 
 ```bash
-gh attestation verify wardn_v1.0.0_linux_amd64 --repo MogRex-Limited/wardn
+gh attestation verify wardn_vX.Y.Z_linux_amd64 --repo MogRex-Limited/wardn
 ```
 
 <Aside>wardn is at v1. Nothing in v1 breaks your code, data or decisions: see the [stability promise](/project/stability/).</Aside>

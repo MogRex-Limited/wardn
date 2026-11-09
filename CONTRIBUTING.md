@@ -4,6 +4,8 @@ wardn decides who can do what in every product that uses it. A bug here is a sec
 
 Read [docs/DESIGN.md](docs/DESIGN.md) and [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) before your first change.
 
+**Questions, ideas and concerns** go to [GitHub Discussions](https://github.com/MogRex-Limited/wardn/discussions) (see [Discussions](https://wardn.oprexcloud.com/community/) in the docs), not issues. For an idea that changes the API, start a discussion before writing code. **Security problems** never go in public: see [SECURITY.md](SECURITY.md).
+
 ## Before you open a pull request
 
 Once per clone, install the pre-push hook. It runs every check automatically before each push and blocks the push if any fail:
@@ -18,6 +20,8 @@ You can also run the same checks CI runs at any time:
 make check
 ```
 
+This runs lint (including security linters and formatting checks), tests with the race detector, the dependency allowlist check, module verification, `govulncheck` and the API compatibility check. A pull request cannot merge unless all of them pass.
+
 Don't bypass the hook with `git push --no-verify`.
 
 `make check` tests every module, using SQLite for the SQL store and skipping servers it can't reach. To test against real PostgreSQL, MySQL, MariaDB, MongoDB and Redis, as CI does, run this (it needs Docker):
@@ -27,14 +31,12 @@ make integration   # starts every server and runs every module's tests against t
 make db-down       # stops them
 ```
 
-This runs formatting and lint (including security linters), tests with the race detector, the dependency allowlist check, module verification and `govulncheck`. A pull request cannot merge unless all of them pass.
-
 Requirements: Go 1.26 or newer, plus `make`. The pinned linter and vulnerability scanner are fetched automatically.
 
 ## Rules for every change
 
 1. **Tests come with the code.** No behaviour change merges without tests that prove it. Security-relevant behaviour needs a test that would fail if the protection were removed.
-2. **Threats are traceable.** If a change mitigates a threat in the threat model, its test is named `TestThreat_<ID>_<Description>` (for example, `TestThreat_T01_CrossTenantAssignmentsIgnored`). If a change adds new attack surface, update the threat model in the same pull request.
+2. **Threats are traceable.** If a change mitigates a threat in the threat model, its test is named `TestThreat_<ID>_<Description>` (for example, `TestThreat_T01_CrossTenantAccessDenied`). If a change adds new attack surface, update the threat model in the same pull request.
 3. **Fail closed.** Every error path must result in "deny". If you are unsure what an error path should do, it should deny.
 4. **No silent suppression.** `//nolint` needs a specific linter and an explanation: `//nolint:gosec // G115: value is bounded by len(x) above`. Reviewers will question every one.
 5. **No hidden behaviour.** No network calls, telemetry, global logging, writing to stdout, `init()` side effects, `unsafe`, `os/exec` or runtime code loading. Lint enforces most of this.

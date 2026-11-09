@@ -20,4 +20,8 @@ wardn is opinionated. These are its most important decisions. The full design do
 | **Storage** | A small interface plus a conformance suite | Any database, proven correct. |
 | **Delivery** | Built complete, hardened and reviewed before adoption | A standard library must not be hardened while products depend on it. |
 | **SQL Server** | Not supported until a product needs it | Products use PostgreSQL and MySQL; untested support is a liability. |
+| **External audit** | None for v1.0; an internal security review instead | v1.0 rests on the internal review, a test per threat, property tests, fault injection, fuzzing and mutation testing. |
+| **Your own transaction** (v1.1) | The transaction travels in the context; `Warden.Transaction` invalidates the cache after the commit | Access changes must commit with the application's own writes, without changing any v1 signature. |
+| **Checking many scopes** (v1.1) | `CheckEach`: one permission at up to 1,000 scopes, in a few store reads | Filtering a list one `Can` at a time costs a few queries per item. |
+| **A pgx store** (v1.2) | A separate module with exactly the SQL store's PostgreSQL tables | pgx applications can't make a `*sql.Tx` from a `pgx.Tx`; a shared schema means no data migration to switch stores. |
 | **Stability** | From v1.0, nothing breaks within v1, [checked on every change](/project/stability/) | Upgrading authorization must be safe and boring. |

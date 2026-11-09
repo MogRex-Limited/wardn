@@ -60,7 +60,7 @@ Option: `wardnmongo.WithCollectionPrefix("authz_")`. No transactions are needed:
 
 `wardn.New` creates and upgrades wardn's tables (or indexes) automatically:
 
-- **Safe when many instances start at once:** a database lock serialises them.
+- **Safe when many instances start at once:** on SQL databases a lock serialises them; on MongoDB every step is safe to run concurrently.
 - **Safe to interrupt:** every step can run twice, which matters on MySQL, which can't undo schema changes.
 - **Never downgrades:** a database already upgraded by a newer wardn is refused (`ErrSchemaTooNew`), so an old deployment can't misread it.
 

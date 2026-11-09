@@ -50,13 +50,13 @@ Each key is a permission (`resource:action`, see [Permissions](/concepts/permiss
 
 | Field | Meaning |
 |---|---|
-| *key* | The role's name: lowercase letters, digits and `_`. |
-| `description` | Optional, shown in admin screens. |
+| *key* | The role's name: lowercase letters, digits and `_`, starting with a letter, at most 64 characters. |
+| `description` | Optional, shown in admin screens. At most 512 bytes. |
 | `allow` | Permissions or wildcards (`*`, `loan:*`) the role grants. |
 | `deny` | Permissions or wildcards the role takes away. Deny beats allow from any role. |
 | `assignable_at` | Scope types (or `global`) where the role may be assigned. Omitted: anywhere. |
 
-A role needs at least one `allow` or `deny` entry.
+A role needs at least one `allow` or `deny` entry, and a policy needs at least one role.
 
 ## Validation
 

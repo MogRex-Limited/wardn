@@ -244,3 +244,54 @@
 	.idea { transition: none; }
 	.idea:hover { transform: none; }
 }
+
+/* Community call to action (home page) */
+.community-cta {
+	text-align: center;
+	padding: 2.5rem 1.5rem;
+	border: 1px solid var(--sl-color-accent);
+	border-radius: 1rem;
+	background: var(--sl-color-accent-low);
+}
+
+.community-cta h2 {
+	margin: 0;
+	font-size: clamp(1.5rem, 3vw, 2rem);
+	letter-spacing: -0.02em;
+	color: var(--sl-color-white);
+}
+
+.community-cta p {
+	max-width: 36rem;
+	margin: 0.75rem auto 1.5rem;
+	color: var(--sl-color-gray-2);
+	font-size: 1.1rem;
+}
+
+.community-cta-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 0.75rem;
+}
+
+.community-cta-actions a {
+	padding: 0.6rem 1.4rem;
+	border-radius: 999px;
+	font-weight: 600;
+	text-decoration: none;
+}
+
+.community-cta .cta-primary {
+	background: var(--sl-color-accent);
+	color: var(--sl-color-black);
+}
+
+.community-cta .cta-secondary {
+	border: 1px solid var(--sl-color-accent);
+	color: var(--sl-color-white);
+}
+
+:root[data-theme='light'] .community-cta .cta-primary {
+	color: var(--sl-color-white);
+}

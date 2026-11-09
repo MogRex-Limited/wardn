@@ -1,0 +1,77 @@
+---
+title: Community
+description: Ask questions, share ideas and raise concerns about wardn, and help other developers who use it.
+template: splash
+discussion: false
+hero:
+  title: Ask. Suggest. Help each other.
+  tagline: Stuck on a policy, unsure which role goes where, or think wardn should work differently? Post it. Other developers who use wardn, and its maintainers, answer here, and every answer stays searchable for the next person.
+  image:
+    file: ../../../assets/logo.svg
+  actions:
+    - text: Ask a question
+      link: https://github.com/MogRex-Limited/wardn/discussions/new?category=q-a
+      icon: right-arrow
+    - text: Share an idea
+      link: https://github.com/MogRex-Limited/wardn/discussions/new?category=ideas
+      variant: secondary
+    - text: Raise a concern
+      link: https://github.com/MogRex-Limited/wardn/discussions/new?category=general
+      variant: secondary
+    - text: Browse all discussions
+      link: https://github.com/MogRex-Limited/wardn/discussions
+      icon: external
+      variant: minimal
+---
+
+import { Aside, Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+<div class="landing-section">
+
+## Where to post
+
+<CardGrid>
+	<LinkCard title="Q&A" description="How do I…? Why does wardn…? Answers are voted on, and the asker marks the one that worked." href="https://github.com/MogRex-Limited/wardn/discussions/categories/q-a" />
+	<LinkCard title="Ideas" description="A feature, an API change, a guide that's missing. Discuss it here before writing code." href="https://github.com/MogRex-Limited/wardn/discussions/categories/ideas" />
+	<LinkCard title="General" description="Concerns, feedback, and anything else about wardn." href="https://github.com/MogRex-Limited/wardn/discussions/categories/general" />
+	<LinkCard title="Show and tell" description="How your team uses wardn: your policy, your admin screens, what you learned." href="https://github.com/MogRex-Limited/wardn/discussions/categories/show-and-tell" />
+</CardGrid>
+
+<p class="landing-lead">A question about one page of the docs? Use the <strong>Questions and comments</strong> box at the bottom of that page. A bug you can reproduce? <a href="https://github.com/MogRex-Limited/wardn/issues/new">Open an issue</a>.</p>
+
+<Aside type="danger" title="Never post a security problem here">
+If you think you have found a way around a permission check, or any other vulnerability, report it privately: see [reporting a vulnerability](/security/reporting/). Discussions are public.
+</Aside>
+
+</div>
+
+<div class="landing-section">
+
+## Asking a good question
+
+<CardGrid>
+	<Card title="Say what you're trying to do" icon="pencil">
+		In one sentence: "an agent should only see tickets of the products they are granted".
+	</Card>
+	<Card title="Show the policy and the code" icon="document">
+		The roles and scopes involved, trimmed, and the check or change that surprised you.
+	</Card>
+	<Card title="Expected versus what happened" icon="warning">
+		The error, or the `Explain` output for a decision you didn't expect.
+	</Card>
+	<Card title="Versions" icon="information">
+		wardn, the store you use, and your database.
+	</Card>
+</CardGrid>
+
+<p class="landing-lead">Never paste real user IDs, customer data, connection strings or secrets: replace them with made-up values. Reading needs no account; to post, sign in with GitHub.</p>
+
+</div>
+
+<div class="landing-section">
+
+## Ground rules
+
+<p class="landing-lead">Be kind and assume good intent: everyone was new to authorization once. Keep each discussion to one topic, and search before you post. Disagree with ideas, not people. If an answer solved your problem, mark it as the answer and vote it up. When a question shows the docs are unclear, the maintainers fix the docs too.</p>
+
+</div>

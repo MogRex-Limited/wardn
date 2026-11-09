@@ -18,6 +18,12 @@ export default defineConfig({
 			editLink: { baseUrl: `${repo}/edit/main/website/` },
 			lastUpdated: true,
 			customCss: ['./src/styles/custom.css'],
+			components: {
+				// Adds each page's discussion thread (src/components/Discussion.astro).
+				Footer: './src/components/Footer.astro',
+				// Adds the Community button to the top bar (src/components/SocialIcons.astro).
+				SocialIcons: './src/components/SocialIcons.astro',
+			},
 			plugins: [starlightLinksValidator({ errorOnLocalLinks: false })],
 			sidebar: [
 				{
@@ -96,6 +102,13 @@ export default defineConfig({
 						{ label: 'Threat model', slug: 'security/threat-model' },
 						{ label: 'How wardn is tested', slug: 'security/testing' },
 						{ label: 'Reporting a vulnerability', slug: 'security/reporting' },
+					],
+				},
+				{
+					label: 'Community',
+					items: [
+						{ label: 'Ask, suggest, discuss', link: '/community/', badge: { text: 'New', variant: 'tip' } },
+						{ label: 'All discussions on GitHub', link: `${repo}/discussions`, attrs: { target: '_blank', rel: 'noopener' } },
 					],
 				},
 				{

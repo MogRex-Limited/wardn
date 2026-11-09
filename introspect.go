@@ -206,7 +206,10 @@ func (w *Warden) SweepExpired(ctx context.Context, opts ...SweepOption) (int, er
 
 // RunExpiry calls SweepExpired every interval until ctx is done, passing
 // errors to onError (which may be nil). Run it in its own goroutine, on one
-// instance or on all: reporting is idempotent.
+// instance or on all. Reporting is at least once: instances sweeping at the
+// same time, or a sweep that fails part-way, can report an expiry twice, so
+// an audit log should ignore a repeat of the same user, role, scope and
+// expiry time.
 func (w *Warden) RunExpiry(ctx context.Context, interval time.Duration, onError func(error), opts ...SweepOption) {
 	t := time.NewTicker(interval)
 	defer t.Stop()

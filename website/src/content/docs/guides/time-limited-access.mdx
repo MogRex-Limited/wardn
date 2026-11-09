@@ -32,7 +32,7 @@ The window is checked on every request against the current time, so access stops
 
 ## Record expiries in your audit trail
 
-Regulators expect a record of when access ended. The expiry sweeper reports each expired assignment exactly once, through your [audit hook](/guides/audit/) as an `assignment.expired` event:
+Regulators expect a record of when access ended. The expiry sweeper reports each expired assignment through your [audit hook](/guides/audit/) as an `assignment.expired` event:
 
 ```go
 // Run in its own goroutine; safe on every instance.
@@ -41,7 +41,7 @@ go w.RunExpiry(ctx, time.Minute, func(err error) { log.Error("expiry sweep", "er
 
 Or call `w.SweepExpired(ctx)` from your own scheduler. Pass `wardn.RemoveExpired()` to also delete expired assignments once they're reported.
 
-If your audit hook fails, the sweep stops, and those expiries are reported again next time. An assignment that was granted again while a sweep was running is never removed.
+If your audit hook fails, the sweep stops, and those expiries are reported again next time. An expiry can be reported more than once (after a failure, or when several instances sweep at the same moment), so deduplicate on user, role, scope and `expires_at` if your trail needs exactly one record. An assignment that was granted again while a sweep was running is never removed.
 
 ## Testing with time
 
