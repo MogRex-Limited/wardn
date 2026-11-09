@@ -50,6 +50,10 @@ services:
 
   mongo:
     image: mongo:8.0@sha256:b9924c330a8bbc5800fe9c69f04a84e221eca7b28fd049a0354147d9908fa142
+    # Lets MongoDB 8.0 start on Linux kernels from 6.19 (SERVER-121912);
+    # see the same setting in .github/workflows/ci.yml.
+    environment:
+      GLIBC_TUNABLES: glibc.pthread.rseq=1
     ports: ["127.0.0.1:56017:27017"]
     tmpfs: [/data/db]
     healthcheck:
