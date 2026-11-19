@@ -6,6 +6,18 @@ All notable changes to wardn are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- **Built with Go 1.27.4,** which fixes GO-2026-6859, a crash in
+  `net/http` servers. The bug is in the Go standard library, not in wardn:
+  rebuild your own services with Go 1.27.4 or newer too.
+
+### Fixed
+
+- The docs site build (`website/build.sh`) downloads Node.js again when the
+  copy kept from an earlier build no longer runs, instead of failing with
+  "Segmentation fault".
+
 ## [1.2.0] - 2026-11-09
 
 Released together with `store/mongo` v1.2.0, `cache/redis` v1.2.0 and the

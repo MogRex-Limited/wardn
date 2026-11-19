@@ -34,9 +34,20 @@ else
 	esac
 	name="node-v$NODE_VERSION-linux-$arch"
 	dir="${TMPDIR:-/tmp}/wardn-$name"
-	if [ ! -x "$dir/bin/node" ]; then
+	# A copy from an earlier build is reused only if it actually runs: a
+	# damaged one (interrupted unpack, full disk, partly cleaned /tmp) would
+	# otherwise crash every build with "Segmentation fault".
+	if [ -d "$dir" ] && ! "$dir/bin/node" --version >/dev/null 2>&1; then
+		echo "The cached Node.js in $dir doesn't run; downloading it again."
+		rm -rf "$dir"
+	fi
+	if [ ! -d "$dir" ]; then
 		url="https://nodejs.org/dist/v$NODE_VERSION/$name.tar.gz"
-		tarball="$dir.tar.gz"
+		tmp="$dir.partial.$$"
+		rm -rf "$tmp"
+		mkdir -p "$tmp"
+		trap 'rm -rf "$tmp"' EXIT
+		tarball="$tmp/$name.tar.gz"
 		if command -v curl >/dev/null 2>&1; then
 			curl -fsSL "$url" -o "$tarball"
 		else
@@ -46,10 +57,18 @@ else
 			echo "$sum  $tarball" | sha256sum -c - >/dev/null
 		else
 			echo "$sum  $tarball" | shasum -a 256 -c - >/dev/null
-		fi || { echo "Checksum mismatch for $name.tar.gz; refusing to use it." >&2; rm -f "$tarball"; exit 1; }
-		mkdir -p "$dir"
-		tar -xzf "$tarball" -C "$dir" --strip-components=1
-		rm -f "$tarball"
+		fi || { echo "Checksum mismatch for $name.tar.gz; refusing to use it." >&2; exit 1; }
+		mkdir "$tmp/node"
+		tar -xzf "$tarball" -C "$tmp/node" --strip-components=1
+		"$tmp/node/bin/node" --version >/dev/null || {
+			echo "The downloaded Node.js v$NODE_VERSION doesn't run on this host ($(uname -srm)). Use the Dockerfile build, or install Node.js $MIN_NODE+ on the host." >&2
+			exit 1
+		}
+		# Move into place only once complete, so a failed build never
+		# leaves a half-unpacked copy behind.
+		mv "$tmp/node" "$dir"
+		rm -rf "$tmp"
+		trap - EXIT
 	fi
 	PATH="$dir/bin:$PATH"
 	export PATH
