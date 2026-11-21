@@ -6,7 +6,7 @@ toolchain go1.27.4
 
 require (
 	github.com/MogRex-Limited/wardn v1.2.0
-	github.com/jackc/pgx/v5 v5.12.0
+	github.com/jackc/pgx/v5 v5.13.0
 )
 
 require (
